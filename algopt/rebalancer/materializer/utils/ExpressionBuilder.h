@@ -87,6 +87,13 @@ struct hash<facebook::rebalancer::materializer::PartitionInfoCacheKey> {
 
 namespace facebook::rebalancer::materializer {
 
+// One configured scope item.
+struct BundleItem {
+  entities::ScopeItemId scopeItemId;
+  double size;
+  std::shared_ptr<const std::vector<entities::GroupId>> groupIds;
+};
+
 class ExpressionBuilder {
  public:
   ExpressionBuilder(
@@ -120,6 +127,17 @@ class ExpressionBuilder {
       std::optional<double> defaultValue = std::nullopt,
       std::optional<entities::ScopeId> aggregationScopeId = std::nullopt)
       FOLLY_TS_REQUIRES(!applyfunc);
+
+  // Complete-bundle contribution plus raw utilization from unconfigured items:
+  //   sum_G floor(util(item, G) / size) * size.
+  folly::coro::Task<ExprPtr> getBundledAbsoluteUtil(
+      UtilMetric metric,
+      entities::DimensionId dimensionId,
+      entities::ScopeId capacityScopeId,
+      entities::ScopeItemId capacityScopeItemId,
+      entities::PartitionId partitionId,
+      entities::ScopeId configuredScopeId,
+      const std::vector<BundleItem>& bundleItems) FOLLY_TS_REQUIRES(!applyfunc);
 
   // Relative util is the absolute util divided by the scope item's size in the
   // same dimension.
@@ -630,6 +648,18 @@ class ExpressionBuilder {
 
   // Cache for getAbsoluteUtil(metric, descriptor)
   AsyncCache<std::tuple<UtilMetric, Descriptor>, ExprPtr> absoluteUtilCache_;
+
+  // groupIds is derived from the other key fields.
+  AsyncCache<
+      std::tuple<
+          UtilMetric,
+          entities::DimensionId,
+          entities::PartitionId,
+          entities::ScopeId,
+          entities::ScopeItemId,
+          double>,
+      ExprPtr>
+      bundledItemAbsoluteUtilCache_;
 
   // Cache for getRelativeUtil(metric, descriptor)
   AsyncCache<std::tuple<UtilMetric, Descriptor>, ExprPtr> relativeUtilCache_;

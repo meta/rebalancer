@@ -23,6 +23,7 @@
 #include <folly/Portability.h>
 #include <thrift/lib/cpp/util/EnumUtils.h>
 
+#include <cmath>
 #include <stdexcept>
 
 namespace facebook::rebalancer::interface {
@@ -447,8 +448,15 @@ void ProblemChecker::checkCapacitySpec(const CapacitySpec& spec) {
   checkDimensionExistsOrEmpty(*spec.dimension());
   checkLimitForScopeItems(*spec.scope(), *spec.limit());
   checkScopeItemFilterSpec(*spec.filter(), *spec.scope());
+  if (spec.utilizationBound() && spec.groupBundleUtilization()) {
+    throw std::runtime_error(
+        "CapacitySpec.utilizationBound and groupBundleUtilization cannot both be set");
+  }
   if (auto utilBound = spec.utilizationBound()) {
     check(utilBound->groupUtilizationBound().value(), *spec.scope());
+  }
+  if (auto bundleUtilization = spec.groupBundleUtilization()) {
+    check(*bundleUtilization, spec);
   }
   if (*spec.useLegacyFormula()) {
     XLOG(WARNING)
@@ -2376,6 +2384,38 @@ void ProblemChecker::check(
       scope, partitionName, *groupUtilizationBound.perGroupValues());
   if (auto scopeName = groupUtilizationBound.aggregationScope()) {
     checkScopeExists(*scopeName);
+  }
+}
+
+void ProblemChecker::check(
+    const interface::GroupBundleUtilization& bundleUtilization,
+    const interface::CapacitySpec& spec) const {
+  checkPartitionExists(*bundleUtilization.partitionName());
+  const auto& scope = *bundleUtilization.scope();
+  checkScopeExists(scope);
+  if (*spec.definition() != CapacitySpecDefinition::AFTER) {
+    throw std::runtime_error(
+        fmt::format(
+            "GroupBundleUtilization requires CapacitySpec.definition AFTER, got {}",
+            apache::thrift::util::enumNameSafe(*spec.definition())));
+  }
+  if (*spec.zeroAllowed()) {
+    throw std::runtime_error(
+        "GroupBundleUtilization is not supported with CapacitySpec.zeroAllowed");
+  }
+  if (bundleUtilization.bundleSizes()->empty()) {
+    throw std::runtime_error(
+        "GroupBundleUtilization.bundleSizes must not be empty");
+  }
+  for (const auto& [scopeItem, bundleSize] : *bundleUtilization.bundleSizes()) {
+    checkScopeItemExists(scope, scopeItem);
+    if (!std::isfinite(bundleSize) || bundleSize <= 0) {
+      throw std::runtime_error(
+          fmt::format(
+              "GroupBundleUtilization.bundleSizes[{}] must be positive and finite, got {}",
+              scopeItem,
+              bundleSize));
+    }
   }
 }
 

@@ -372,6 +372,19 @@ struct GroupUtilizationBound {
   4: optional string aggregationScope;
 }
 
+// For each configured scope item B, contributes
+//   sum_G floor(Util(B, G) / k) * k
+// instead of raw utilization. Unconfigured items remain raw.
+// Requires AFTER, !zeroAllowed, no utilizationBound, a disjoint partition, and a
+// non-negative static scalar dimension. Each B must belong to one CapacitySpec
+// scope item.
+struct GroupBundleUtilization {
+  1: string partitionName;
+  2: string scope;
+  // Positive bundle size k per `scope` item, in units of the spec dimension.
+  3: map<string, double> bundleSizes;
+}
+
 union UtilizationBound {
   // In future there might be other ways to bound utilization such as ScopeItemUtilizationBound
   // which can help us cap utilization per container perhaps. For now, we only need to bound
@@ -397,6 +410,8 @@ struct CapacitySpec {
   // if specified, we upper|lower bound the utilization contribution by a group of objects
   // to a scopeItem by a pre-specified limit
   12: optional UtilizationBound utilizationBound;
+  // Counts only complete per-group bundles in configured scope items.
+  13: optional GroupBundleUtilization groupBundleUtilization;
 }
 
 /* this is built for namespace allocation problem

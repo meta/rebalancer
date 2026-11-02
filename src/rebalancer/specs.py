@@ -349,6 +349,14 @@ class GroupUtilizationBound(TypedDict, total=False):
     aggregationScope: str
 
 
+class GroupBundleUtilization(TypedDict, total=False):
+    """Count only complete per-group bundles toward a capacity spec."""
+
+    partitionName: str
+    scope: str
+    bundleSizes: dict[str, float]
+
+
 class UtilizationBound(TypedDict, total=False):
     """Union: exactly one arm must be present."""
 
@@ -368,6 +376,7 @@ class CapacitySpec(TypedDict, total=False):
     zeroAllowed: bool
     useLegacyFormula: bool  # default False
     utilizationBound: UtilizationBound
+    groupBundleUtilization: GroupBundleUtilization
 
 
 class CapacityWithSupplyAndDrSpec(TypedDict, total=False):

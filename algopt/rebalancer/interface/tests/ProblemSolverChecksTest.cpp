@@ -23,6 +23,7 @@
 #include <folly/Portability.h>
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -4145,6 +4146,74 @@ TEST_P(ProblemSolverChecksTest, CapacitySpecWithGroupUtilizationBound) {
     validSpec.utilizationBound() = utilizationBound;
     solver->addConstraint(validSpec);
   }
+}
+
+TEST_P(ProblemSolverChecksTest, CapacitySpecWithGroupBundleUtilization) {
+  auto solver = makeInitializedSolver(GetParam());
+  solver->addPartition(
+      "pod",
+      std::unordered_map<std::string, std::string>{{"s1", "p1"}, {"s2", "p2"}});
+
+  const auto makeBundleUtilization =
+      [](std::map<std::string, double> bundleSizes) {
+        interface::GroupBundleUtilization bundleUtilization;
+        bundleUtilization.partitionName() = "pod";
+        bundleUtilization.scope() = "host";
+        bundleUtilization.bundleSizes() = std::move(bundleSizes);
+        return bundleUtilization;
+      };
+  const auto makeSpec =
+      [](interface::GroupBundleUtilization bundleUtilization) {
+        interface::CapacitySpec spec;
+        spec.name() = "bundled capacity";
+        spec.scope() = "host";
+        spec.dimension() = "shard_count";
+        spec.definition() = interface::CapacitySpecDefinition::AFTER;
+        spec.bound() = interface::CapacitySpecBound::MIN;
+        spec.limit()->type() = interface::LimitType::ABSOLUTE;
+        spec.limit()->globalLimit() = 3;
+        spec.groupBundleUtilization() = std::move(bundleUtilization);
+        return spec;
+      };
+  const auto validSpec = makeSpec(makeBundleUtilization({{"h1", 3}}));
+
+  EXPECT_NO_THROW(solver->addConstraint(validSpec));
+
+  REBALANCER_EXPECT_RUNTIME_ERROR(
+      solver->addConstraint(makeSpec(makeBundleUtilization({}))),
+      "GroupBundleUtilization.bundleSizes must not be empty");
+  REBALANCER_EXPECT_RUNTIME_ERROR(
+      solver->addConstraint(makeSpec(makeBundleUtilization({{"h1", 0}}))),
+      "GroupBundleUtilization.bundleSizes[h1] must be positive and finite, got 0");
+  REBALANCER_EXPECT_RUNTIME_ERROR(
+      solver->addConstraint(makeSpec(makeBundleUtilization(
+          {{"h1", std::numeric_limits<double>::infinity()}}))),
+      "GroupBundleUtilization.bundleSizes[h1] must be positive and finite, got inf");
+
+  auto duringAndAfterSpec = validSpec;
+  duringAndAfterSpec.definition() =
+      interface::CapacitySpecDefinition::DURING_AND_AFTER;
+  REBALANCER_EXPECT_RUNTIME_ERROR(
+      solver->addConstraint(duringAndAfterSpec),
+      "GroupBundleUtilization requires CapacitySpec.definition AFTER, got DURING_AND_AFTER");
+
+  auto zeroAllowedSpec = validSpec;
+  zeroAllowedSpec.zeroAllowed() = true;
+  REBALANCER_EXPECT_RUNTIME_ERROR(
+      solver->addConstraint(zeroAllowedSpec),
+      "GroupBundleUtilization is not supported with CapacitySpec.zeroAllowed");
+
+  auto combinedUtilization = validSpec;
+  interface::GroupUtilizationBound groupUtilizationBound;
+  groupUtilizationBound.partitionName() = "pod";
+  groupUtilizationBound.aggregationScope() = "host";
+  groupUtilizationBound.perGroupValues()->globalLimit() = 3;
+  interface::UtilizationBound utilizationBound;
+  utilizationBound.set_groupUtilizationBound(groupUtilizationBound);
+  combinedUtilization.utilizationBound() = std::move(utilizationBound);
+  REBALANCER_EXPECT_RUNTIME_ERROR(
+      solver->addConstraint(combinedUtilization),
+      "CapacitySpec.utilizationBound and groupBundleUtilization cannot both be set");
 }
 
 TEST_P(ProblemSolverChecksTest, CustomEquivalenceSet) {

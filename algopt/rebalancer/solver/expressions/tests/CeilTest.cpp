@@ -88,32 +88,6 @@ TEST_F(CeilTest, IsInteger) {
   buildUniverse();
   Context context;
   EXPECT_TRUE(ceil(const_expr(1.5, getUniverse()))->is_integer(context));
-  EXPECT_TRUE(floor(const_expr(1.5, getUniverse()))->is_integer(context));
-}
-
-TEST_F(CeilTest, FloorOperator) {
-  buildUniverse();
-  const auto& universe = getUniverse();
-  const Assignment assignment(universe.getContainers().getInitialAssignment());
-
-  EXPECT_DOUBLE_EQ(1, apply(floor(const_expr(1.9, universe)), assignment));
-  EXPECT_DOUBLE_EQ(1, apply(floor(const_expr(1.0, universe)), assignment));
-  EXPECT_DOUBLE_EQ(-2, apply(floor(const_expr(-1.1, universe)), assignment));
-}
-
-TEST_F(CeilTest, FloorNonConstant) {
-  buildUniverse();
-  const auto& universe = getUniverse();
-  const Assignment assignment(universe.getContainers().getInitialAssignment());
-  auto expr = 2 * variable(object(1), container(0), universe, assignment) - 1.5;
-  auto floorExpr = floor(expr);
-
-  EXPECT_DOUBLE_EQ(-2, floorExpr->getInitialValue());
-  EXPECT_DOUBLE_EQ(-2, apply(floorExpr, assignment));
-  EXPECT_DOUBLE_EQ(
-      0, evaluate(floorExpr, {{object(1), container(0)}}, assignment));
-  EXPECT_DOUBLE_EQ(
-      0, applyChanges(floorExpr, {{object(1), container(0)}}, assignment));
 }
 
 TEST_F(CeilTest, NonConstant) {

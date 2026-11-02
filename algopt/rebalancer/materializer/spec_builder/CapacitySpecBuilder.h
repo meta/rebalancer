@@ -107,7 +107,17 @@ class CapacitySpecBuilder : public SpecBuilder {
       entities::ScopeItemId scopeItemId,
       const interface::GroupUtilizationBound& bound) const;
 
- private:
+  struct BundledUtilization {
+    entities::PartitionId partitionId;
+    entities::ScopeId scopeId;
+    // Bundle items by containing spec scope item.
+    entities::Map<entities::ScopeItemId, std::vector<BundleItem>>
+        scopeItemToBundleItems;
+  };
+
+  void initializeBundledUtilization(
+      const interface::GroupBundleUtilization& bundleUtilization);
+
   facebook::rebalancer::interface::CapacitySpec spec_;
   entities::ScopeId scopeId_;
   entities::DimensionId dimensionId_;
@@ -120,6 +130,8 @@ class CapacitySpecBuilder : public SpecBuilder {
   // used to cap (upperbound) or threshold (lowerbound) the utilization
   // of a scopeItem by the provided limit
   std::optional<LimitWrapper> perGroupUtilizationBounds_ = std::nullopt;
+
+  std::optional<BundledUtilization> bundledUtilization_ = std::nullopt;
   LimitWrapper limits_;
   ScopeItemFilterWrapper scopeFilter_;
 };

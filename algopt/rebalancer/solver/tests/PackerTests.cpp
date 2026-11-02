@@ -636,6 +636,18 @@ TEST_F(PackerTests, MipCeil) {
       universe);
 }
 
+TEST_F(PackerTests, MipFloor) {
+  REBALANCER_SKIP_IF_NO_MIP_SOLVER();
+  const auto universe = setupUniverse(/*numObjects=*/10, /*numContainers=*/10);
+  const Assignment assignment(universe->getContainers().getInitialAssignment());
+  mipbasic(
+      floor(
+          variable(object(0), container(0), *universe, assignment) * 10 - 2.9),
+      7,
+      -3,
+      universe);
+}
+
 TEST_F(PackerTests, MipRectangle) {
   REBALANCER_SKIP_IF_NO_MIP_SOLVER();
   const auto universe = setupUniverse(/*numObjects=*/10, /*numContainers=*/10);

@@ -477,6 +477,87 @@ BENCHMARK(CapacityMaterializationManyScopeItems) {
   solver->solve();
 }
 
+static void runCapacityMaterializationBenchmark(
+    const bool bundled,
+    const int specCount) {
+  constexpr int groupSize = 3;
+  constexpr int groupCount = 1000;
+  constexpr int containerCount = 100;
+
+  auto solver = interface::initializeTestProblemSolver();
+  if (solver == nullptr) {
+    throw std::runtime_error("failed to initialize benchmark solver");
+  }
+  solver->setObjectName("object");
+  solver->setContainerName("container");
+
+  std::map<std::string, std::vector<std::string>> initialAssignment;
+  std::map<std::string, std::string> objectToGroup;
+  std::map<std::string, double> bundleSizes;
+  for (const auto containerIndex : folly::irange(containerCount)) {
+    const auto container = fmt::format("container{}", containerIndex);
+    initialAssignment[container] = {};
+    bundleSizes[container] = groupSize;
+  }
+  for (const auto groupIndex : folly::irange(groupCount)) {
+    const auto group = fmt::format("group{}", groupIndex);
+    auto& objects = initialAssignment[fmt::format(
+        "container{}", groupIndex % containerCount)];
+    for (const auto objectIndex : folly::irange(groupSize)) {
+      const auto object = fmt::format("object{}_{}", groupIndex, objectIndex);
+      objects.push_back(object);
+      objectToGroup[object] = group;
+    }
+  }
+  solver->setAssignment(initialAssignment);
+  solver->addPartition("bundle_group", std::move(objectToGroup));
+
+  for (const auto specIndex : folly::irange(specCount)) {
+    interface::CapacitySpec capacitySpec;
+    capacitySpec.name() =
+        fmt::format("{} capacity {}", bundled ? "bundled" : "raw", specIndex);
+    capacitySpec.scope() = "container";
+    capacitySpec.dimension() = "object_count";
+    capacitySpec.definition() = interface::CapacitySpecDefinition::AFTER;
+    capacitySpec.bound() = specIndex % 2 == 0
+        ? interface::CapacitySpecBound::MAX
+        : interface::CapacitySpecBound::MIN;
+    capacitySpec.limit()->type() = interface::LimitType::ABSOLUTE;
+    capacitySpec.limit()->globalLimit() = groupSize * groupCount;
+    if (bundled) {
+      capacitySpec.groupBundleUtilization().emplace();
+      capacitySpec.groupBundleUtilization()->partitionName() = "bundle_group";
+      capacitySpec.groupBundleUtilization()->scope() = "container";
+      capacitySpec.groupBundleUtilization()->bundleSizes() = bundleSizes;
+    }
+    solver->addConstraint(std::move(capacitySpec));
+  }
+
+  interface::LocalSearchSolverSpec solverSpec;
+  solverSpec.moveTypeList()->push_back(
+      interface::ProblemSolver::makeMoveTypeSpec(
+          interface::SingleMoveTypeSpec{}));
+  solverSpec.stopAfterMoves() = 0;
+  solver->addSolver(solverSpec);
+  solver->solve();
+}
+
+BENCHMARK(RawCapacityMaterialization1Spec) {
+  runCapacityMaterializationBenchmark(false, 1);
+}
+
+BENCHMARK(RawCapacityMaterialization10Specs) {
+  runCapacityMaterializationBenchmark(false, 10);
+}
+
+BENCHMARK(BundledCapacityMaterialization1Spec) {
+  runCapacityMaterializationBenchmark(true, 1);
+}
+
+BENCHMARK(BundledCapacityMaterialization10Specs) {
+  runCapacityMaterializationBenchmark(true, 10);
+}
+
 int main(int argc, char** argv) {
   const folly::Init init(&argc, &argv);
 

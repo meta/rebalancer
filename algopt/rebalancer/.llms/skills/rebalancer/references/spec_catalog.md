@@ -35,8 +35,14 @@ struct CapacitySpec {
   10: bool zeroAllowed;
   11: bool useLegacyFormula = false;
   12: optional UtilizationBound utilizationBound;
+  13: optional GroupBundleUtilization groupBundleUtilization;
 }
 ```
+
+`groupBundleUtilization` counts only complete, per-partition-group bundles for
+configured scope items; unconfigured items retain raw utilization. It requires
+an `AFTER` definition, a disjoint partition, and cannot be combined with
+`utilizationBound` or `zeroAllowed`.
 
 **`CapacitySpecDefinition`** — what is measured:
 

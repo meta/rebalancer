@@ -25,7 +25,10 @@
 #include <thrift/lib/cpp/util/EnumUtils.h>
 
 #include <limits>
+#include <map>
 #include <set>
+#include <string>
+#include <vector>
 
 namespace facebook::rebalancer::materializer::tests {
 
@@ -123,6 +126,345 @@ class CapacitySpecBuilderTest : public SpecBuilderTestBase<> {
     return capacitySpec;
   }
 };
+
+// VCP-style bundles of k = 3: servers are placed into reservations, servers of
+// one pod form a usable bundle together, and the `eligible` dimension is 1 for
+// server types the reservation accepts and 0 otherwise.
+class BundledCapacitySpecBuilderTest : public SpecBuilderTestBase<> {
+ protected:
+  using Moves = entities::Map<std::string, std::string>;
+
+  inline static const std::vector<std::string> kInitialEligibleInR0 = {
+      "mixed0",
+      "mixed1",
+      "fragmentA0"};
+  inline static const std::vector<std::string> kPure = {
+      "pure0",
+      "pure1",
+      "pure2"};
+  inline static const std::vector<std::string> kPureInR1 = {
+      "pureR1_0",
+      "pureR1_1",
+      "pureR1_2"};
+  // Two eligible servers and an ineligible one of the same pod.
+  inline static const std::vector<std::string> kMixedCandidate = {
+      "candidate0",
+      "candidate1",
+      "candidateIneligible"};
+
+  folly::coro::Task<void> setUpCoro() {
+    setUpUniverse(
+        {// r0 holds 3 eligible servers but no complete bundle.
+         {"r0", {"mixed0", "mixed1", "mixedIneligible", "fragmentA0"}},
+         {"r1", kPureInR1},
+         {"free",
+          {"pure0",
+           "pure1",
+           "pure2",
+           "candidate0",
+           "candidate1",
+           "candidate2",
+           "candidateIneligible",
+           "fragmentC0"}}},
+        "server",
+        "reservation");
+    co_await addPartition(
+        "pod",
+        {{"mixed", {"mixed0", "mixed1", "mixedIneligible"}},
+         {"fragmentA", {"fragmentA0"}},
+         {"pureR1", kPureInR1},
+         {"pure", kPure},
+         {"candidate",
+          {"candidate0", "candidate1", "candidate2", "candidateIneligible"}},
+         {"fragmentC", {"fragmentC0"}}});
+    co_await addPartition(
+        "overlapping", {{"group0", kPure}, {"group1", {"pure2"}}});
+    co_await addScope("allowance", {{"a0", {"r0", "r1"}}});
+    co_await addScope("rack", {{"rack0", {"r0", "free"}}, {"rack1", {"r1"}}});
+    co_await addScope("empty", {{"empty0", {}}});
+
+    co_await addObjectDimension(
+        "eligible",
+        entities::Map<std::string, double>{
+            {"mixedIneligible", 0}, {"candidateIneligible", 0}},
+        1);
+    co_await addObjectDimension(
+        "units",
+        entities::Map<std::string, double>{
+            {"pure0", 1.5}, {"pure1", 1}, {"pure2", 1}},
+        0);
+    co_await addObjectDimension(
+        "near_bundle",
+        entities::Map<std::string, double>{
+            {"pure0", 1 - 1e-12}, {"mixedIneligible", 0}},
+        1);
+    co_await addObjectDimension(
+        "signed", entities::Map<std::string, double>{{"pure0", -1}}, 1);
+    co_await addObjectDimension(
+        "vector",
+        std::vector<entities::Map<entities::ObjectId, double>>{{}, {}},
+        {1, 1});
+    for (const auto& dimension : {"eligible", "units", "near_bundle"}) {
+      for (const auto& scope : {"reservation", "allowance"}) {
+        co_await addScopeDimension(dimension, scopeId(scope), {}, 1);
+      }
+    }
+  }
+
+  void SetUp() override {
+    folly::coro::blockingWait(setUpCoro());
+  }
+
+  static interface::GroupBundleUtilization makeBundleUtilization(
+      std::map<std::string, double> bundleSizes) {
+    interface::GroupBundleUtilization bundleUtilization;
+    bundleUtilization.partitionName() = "pod";
+    bundleUtilization.scope() = "reservation";
+    bundleUtilization.bundleSizes() = std::move(bundleSizes);
+    return bundleUtilization;
+  }
+
+  static interface::CapacitySpec makeSpec(
+      interface::CapacitySpecBound bound,
+      double limit,
+      interface::GroupBundleUtilization bundleUtilization) {
+    interface::CapacitySpec spec;
+    spec.scope() = "reservation";
+    spec.dimension() = "eligible";
+    spec.bound() = bound;
+    spec.limit()->type() = interface::LimitType::ABSOLUTE;
+    spec.limit()->globalLimit() = limit;
+    spec.filter()->itemsWhitelist() = {"r0"};
+    spec.groupBundleUtilization() = std::move(bundleUtilization);
+    return spec;
+  }
+
+  // Spec on r0 with a bundle size of 3.
+  static interface::CapacitySpec makeR0Spec(
+      interface::CapacitySpecBound bound,
+      double limit) {
+    return makeSpec(bound, limit, makeBundleUtilization({{"r0", 3}}));
+  }
+
+  // A MAX bound of zero evaluates to the usable utilization.
+  static interface::CapacitySpec makeUsableUtilSpec() {
+    return makeR0Spec(interface::CapacitySpecBound::MAX, 0);
+  }
+
+  static Moves moveTo(
+      const std::string& reservation,
+      const std::vector<std::string>& servers,
+      Moves moves = {}) {
+    for (const auto& server : servers) {
+      moves[server] = reservation;
+    }
+    return moves;
+  }
+
+  void constructSpecBuilder(const interface::CapacitySpec& spec) {
+    expressionBuilder();
+    [[maybe_unused]] const CapacitySpecBuilder specBuilder(
+        getUniversePtr(), spec);
+  }
+
+  folly::coro::Task<ConstraintInfo> buildConstraint(
+      const interface::CapacitySpec& spec) {
+    auto& builder = expressionBuilder();
+    const CapacitySpecBuilder specBuilder(getUniversePtr(), spec);
+    auto constraints = co_await specBuilder.constraints(builder);
+    EXPECT_EQ(1, constraints.size());
+    co_return constraints.at(0);
+  }
+
+  // Evaluates the constraint, with both the local search and the MIP
+  // evaluators, after applying the moves to the initial assignment.
+  double evaluateAfter(const ConstraintInfo& constraint, const Moves& moves) {
+    return evaluate(constraint, deltaFromInitial(moves));
+  }
+};
+
+CO_TEST_F(BundledCapacitySpecBuilderTest, CountsOnlyCompletePerGroupBundles) {
+  const auto usableUtil = co_await buildConstraint(makeUsableUtilSpec());
+
+  EXPECT_EQ(0, evaluateAfter(usableUtil, moveTo("r0", {"pure0", "pure1"})));
+  EXPECT_EQ(
+      0,
+      evaluateAfter(
+          usableUtil, moveTo("r0", {"pure0", "pure1", "fragmentC0"})));
+  EXPECT_EQ(3, evaluateAfter(usableUtil, moveTo("r0", kPure)));
+  EXPECT_EQ(
+      6,
+      evaluateAfter(usableUtil, moveTo("r0", kPure, moveTo("r0", kPureInR1))));
+
+  // A zero-dimension server cannot complete its pod's bundle.
+  EXPECT_EQ(0, evaluateAfter(usableUtil, moveTo("r0", kMixedCandidate)));
+  EXPECT_EQ(
+      3,
+      evaluateAfter(
+          usableUtil,
+          moveTo("r0", {"candidate2"}, moveTo("r0", kMixedCandidate))));
+}
+
+CO_TEST_F(
+    BundledCapacitySpecBuilderTest,
+    NonIntegralUtilCountsOnlyCompleteBundles) {
+  auto spec = makeUsableUtilSpec();
+  spec.dimension() = "units";
+  const auto usableUtil = co_await buildConstraint(spec);
+
+  // 2.5 and 3.5 units of the pure pod.
+  EXPECT_EQ(0, evaluateAfter(usableUtil, moveTo("r0", {"pure0", "pure1"})));
+  EXPECT_EQ(3, evaluateAfter(usableUtil, moveTo("r0", kPure)));
+
+  spec.groupBundleUtilization()->bundleSizes() = {{"r0", 1.75}};
+  const auto fractionalBundles = co_await buildConstraint(spec);
+  EXPECT_DOUBLE_EQ(
+      1.75, evaluateAfter(fractionalBundles, moveTo("r0", {"pure0", "pure1"})));
+  EXPECT_DOUBLE_EQ(3.5, evaluateAfter(fractionalBundles, moveTo("r0", kPure)));
+}
+
+CO_TEST_F(
+    BundledCapacitySpecBuilderTest,
+    FloorHonorsPrecisionAtBundleBoundary) {
+  auto spec = makeUsableUtilSpec();
+  spec.dimension() = "near_bundle";
+  const auto usableUtil = co_await buildConstraint(spec);
+
+  EXPECT_EQ(3, evaluateAfter(usableUtil, moveTo("r0", kPure)));
+}
+
+CO_TEST_F(BundledCapacitySpecBuilderTest, MinCountsOnlyCompleteBundles) {
+  const auto constraint = co_await buildConstraint(
+      makeR0Spec(interface::CapacitySpecBound::MIN, 3));
+
+  EXPECT_EQ(3, evaluateAfter(constraint, {}));
+  EXPECT_EQ(3, evaluateAfter(constraint, moveTo("free", kInitialEligibleInR0)));
+  EXPECT_EQ(3, evaluateAfter(constraint, moveTo("r0", kMixedCandidate)));
+  EXPECT_EQ(
+      0,
+      evaluateAfter(
+          constraint,
+          moveTo("r0", kPure, moveTo("free", kInitialEligibleInR0))));
+}
+
+CO_TEST_F(BundledCapacitySpecBuilderTest, MaxDoesNotGrandfatherInitialRawUtil) {
+  const auto constraint = co_await buildConstraint(
+      makeR0Spec(interface::CapacitySpecBound::MAX, 1));
+  const auto replacement =
+      moveTo("r0", kPure, moveTo("free", kInitialEligibleInR0));
+
+  EXPECT_EQ(2, evaluateAfter(constraint, replacement));
+}
+
+TEST_F(
+    BundledCapacitySpecBuilderTest,
+    InvalidMoveFilterSkipsBundledUtilization) {
+  expressionBuilder();
+  const CapacitySpecBuilder specBuilder(getUniversePtr(), makeUsableUtilSpec());
+  InvalidMoveFilter filter(
+      universe_->getObjects().getObjectIds().size(),
+      universe_->getContainers().getContainerIds().size());
+
+  specBuilder.populateInvalidMoveFilter(
+      filter, expressionBuilder().getUpdatedInitialAssignment());
+
+  EXPECT_TRUE(filter.empty());
+}
+
+CO_TEST_F(BundledCapacitySpecBuilderTest, MixedScopeItemMinCountsRawItemsRaw) {
+  auto spec = makeSpec(
+      interface::CapacitySpecBound::MIN, 6, makeBundleUtilization({{"r0", 3}}));
+  spec.scope() = "allowance";
+  spec.filter()->itemsWhitelist() = {"a0"};
+  const auto mixedMin = co_await buildConstraint(spec);
+
+  // r0 has no complete bundle; unconfigured r1 contributes its 3 raw servers.
+  EXPECT_EQ(3, evaluateAfter(mixedMin, {}));
+  EXPECT_EQ(4, evaluateAfter(mixedMin, moveTo("free", {"pureR1_0"})));
+  EXPECT_EQ(3, evaluateAfter(mixedMin, moveTo("free", {"fragmentA0"})));
+  EXPECT_EQ(6, evaluateAfter(mixedMin, moveTo("free", kPureInR1)));
+  EXPECT_EQ(
+      2,
+      evaluateAfter(
+          mixedMin,
+          moveTo("r1", {"fragmentC0"}, moveTo("free", {"fragmentA0"}))));
+  EXPECT_EQ(
+      0,
+      evaluateAfter(
+          mixedMin, moveTo("r1", kPure, moveTo("free", kInitialEligibleInR0))));
+  EXPECT_EQ(0, evaluateAfter(mixedMin, moveTo("r0", kPure)));
+}
+
+CO_TEST_F(
+    BundledCapacitySpecBuilderTest,
+    NestedScopeBundlesOnlyConfiguredItems) {
+  auto spec = makeUsableUtilSpec();
+  spec.scope() = "allowance";
+  spec.filter()->itemsWhitelist() = {"a0"};
+  const auto partiallyBundled = co_await buildConstraint(spec);
+
+  // Unconfigured r1 stays raw; incomplete bundles in configured r0 count zero.
+  EXPECT_EQ(3, evaluateAfter(partiallyBundled, {}));
+  EXPECT_EQ(4, evaluateAfter(partiallyBundled, moveTo("r1", {"fragmentC0"})));
+  EXPECT_EQ(3, evaluateAfter(partiallyBundled, moveTo("r0", {"fragmentC0"})));
+  EXPECT_EQ(6, evaluateAfter(partiallyBundled, moveTo("r0", kPure)));
+
+  spec.groupBundleUtilization()->bundleSizes() = {{"r0", 3}, {"r1", 3}};
+  const auto fullyBundled = co_await buildConstraint(spec);
+  EXPECT_EQ(3, evaluateAfter(fullyBundled, moveTo("r1", {"fragmentC0"})));
+  // Fragments of one pod split across bundle items never combine.
+  EXPECT_EQ(
+      3,
+      evaluateAfter(
+          fullyBundled,
+          moveTo("r1", {"pure0", "pure1"}, moveTo("r0", {"pure2"}))));
+
+  spec.groupBundleUtilization()->bundleSizes() = {{"free", 3}};
+  const auto outOfScopeBundle = co_await buildConstraint(spec);
+  EXPECT_EQ(6, evaluateAfter(outOfScopeBundle, {}));
+}
+
+TEST_F(BundledCapacitySpecBuilderTest, RejectsUnsupportedInputs) {
+  const auto expectRejected = [&](const std::string& scope,
+                                  const std::string& item,
+                                  const std::string& partition,
+                                  const std::string& message) {
+    auto bundleUtilization = makeBundleUtilization({{item, 3}});
+    bundleUtilization.scope() = scope;
+    bundleUtilization.partitionName() = partition;
+    REBALANCER_EXPECT_RUNTIME_ERROR(
+        constructSpecBuilder(makeSpec(
+            interface::CapacitySpecBound::MAX,
+            0,
+            std::move(bundleUtilization))),
+        message);
+  };
+  expectRejected(
+      "rack",
+      "rack0",
+      "pod",
+      "GroupBundleUtilization requires rack rack0 to be contained in a single item of scope reservation");
+  expectRejected(
+      "empty",
+      "empty0",
+      "pod",
+      "GroupBundleUtilization requires empty empty0 to contain at least one container");
+  expectRejected(
+      "reservation",
+      "r0",
+      "overlapping",
+      "GroupBundleUtilization requires a disjoint partition, but partition overlapping has overlapping groups");
+
+  for (const std::string dimension : {"signed", "vector"}) {
+    auto spec = makeUsableUtilSpec();
+    spec.dimension() = dimension;
+    REBALANCER_EXPECT_RUNTIME_ERROR(
+        constructSpecBuilder(spec),
+        fmt::format(
+            "GroupBundleUtilization requires a static scalar dimension without negative values, but got dimension {}",
+            dimension));
+  }
+}
 
 CO_TEST_F(CapacitySpecBuilderTest, Basic) {
   interface::CapacitySpec capacitySpec;

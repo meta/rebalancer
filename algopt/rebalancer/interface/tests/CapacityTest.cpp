@@ -22,6 +22,7 @@
 #include <map>
 #include <string>
 #include <tuple>
+#include <vector>
 
 using facebook::algopt::isSolverUnavailable;
 using facebook::algopt::solverName;
@@ -1472,6 +1473,65 @@ TEST_P(CapacityTest, DuringInvalidMoveFilterAllowsWithinScopeItemBalance) {
   }
   EXPECT_EQ(1, tasksInHost["host0"]);
   EXPECT_EQ(1, tasksInHost["host1"]);
+}
+
+TEST_P(CapacityOptimalTest, BundledCapacityReplacesIncompleteBundles) {
+  auto [threads, solverPkg] = GetParam();
+  auto solver = initializeTestProblemSolver({.executorThreadCount = threads});
+  solver->setObjectName("server");
+  solver->setContainerName("reservation");
+  solver->setAssignment(
+      std::map<std::string, std::vector<std::string>>{
+          {"r0", {"fragmentA0", "fragmentA1", "fragmentB0"}},
+          {"free", {"pure0", "pure1", "pure2"}}});
+  solver->addPartition(
+      "pod",
+      std::map<std::string, std::vector<std::string>>{
+          {"fragmentA", {"fragmentA0", "fragmentA1"}},
+          {"fragmentB", {"fragmentB0"}},
+          {"pure", {"pure0", "pure1", "pure2"}}});
+  solver->addObjectDimension("eligible", std::map<std::string, double>{}, 1);
+  solver->addObjectDimension("cost", std::map<std::string, double>{}, 1);
+
+  const auto makeBundledSpec = [](CapacitySpecBound bound) {
+    GroupBundleUtilization bundles;
+    bundles.partitionName() = "pod";
+    bundles.scope() = "reservation";
+    bundles.bundleSizes() = {{"r0", 3}};
+
+    CapacitySpec spec;
+    spec.scope() = "reservation";
+    spec.dimension() = "eligible";
+    spec.bound() = bound;
+    spec.limit()->type() = LimitType::ABSOLUTE;
+    spec.limit()->globalLimit() = bound == CapacitySpecBound::MAX ? 3 : 2;
+    spec.filter()->itemsWhitelist() = {"r0"};
+    spec.groupBundleUtilization() = std::move(bundles);
+    return spec;
+  };
+  solver->addConstraint(makeBundledSpec(CapacitySpecBound::MIN));
+  solver->addConstraint(makeBundledSpec(CapacitySpecBound::MAX));
+
+  CapacitySpec minimizeServers;
+  minimizeServers.scope() = "reservation";
+  minimizeServers.dimension() = "cost";
+  minimizeServers.limit()->type() = LimitType::ABSOLUTE;
+  minimizeServers.limit()->globalLimit() = 0;
+  minimizeServers.filter()->itemsWhitelist() = {"r0"};
+  solver->addGoal(minimizeServers);
+
+  OptimalSolverSpec optimalSolverSpec;
+  optimalSolverSpec.solverPackage() = solverPkg;
+  optimalSolverSpec.solveTime() = 10;
+  solver->addSolver(optimalSolverSpec);
+
+  const auto solution = solver->solve();
+  for (const auto* server : {"pure0", "pure1", "pure2"}) {
+    EXPECT_EQ(solution.assignment()->at(server), "r0");
+  }
+  for (const auto* server : {"fragmentA0", "fragmentA1", "fragmentB0"}) {
+    EXPECT_EQ(solution.assignment()->at(server), "free");
+  }
 }
 
 } // namespace facebook::rebalancer::interface::tests

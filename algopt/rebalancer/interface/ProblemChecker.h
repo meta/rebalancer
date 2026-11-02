@@ -371,6 +371,9 @@ class ProblemChecker {
   void check(
       const interface::GroupUtilizationBound& groupUtilizationBound,
       const std::string& scope) const;
+  void check(
+      const interface::GroupBundleUtilization& bundleUtilization,
+      const interface::CapacitySpec& spec) const;
   static void check(
       const algopt::common::thrift::PerObjectiveValue& perObjectiveValue);
 

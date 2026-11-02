@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -126,6 +127,41 @@ void markBySortedPrefixes(
   }
 }
 
+void checkBundledUtilizationDimension(
+    const Universe& universe,
+    DimensionId dimensionId) {
+  const auto& dimension = universe.getObjects().getDimension(dimensionId);
+  if (dimension.size() != 1 || dimension.isDynamic() ||
+      dimension.isRoutingConfigBased() || dimension.hasNegativeValues()) {
+    throw std::runtime_error(
+        fmt::format(
+            "GroupBundleUtilization requires a static scalar dimension without negative values, but got dimension {}",
+            universe.getEntityName(dimensionId)));
+  }
+}
+
+// Groups with enough total dimension to complete a bundle.
+std::shared_ptr<const std::vector<GroupId>> getBundleQualifiedGroups(
+    const Universe& universe,
+    PartitionId partitionId,
+    DimensionId dimensionId,
+    double bundleSize) {
+  const auto& partition = universe.getPartition(partitionId);
+  const auto& dimension =
+      universe.getObjects().getDimension(dimensionId).only();
+  auto groupIds = std::make_shared<std::vector<GroupId>>();
+  for (const auto groupId : partition.getGroupIds()) {
+    double groupValue = 0;
+    for (const auto objectId : partition.getObjectIds(groupId)) {
+      groupValue += dimension.getValue(objectId);
+    }
+    if (universe.getPrecision().compare(groupValue, bundleSize) >= 0) {
+      groupIds->push_back(groupId);
+    }
+  }
+  return groupIds;
+}
+
 } // namespace
 
 CapacitySpecBuilder::CapacitySpecBuilder(
@@ -140,6 +176,76 @@ CapacitySpecBuilder::CapacitySpecBuilder(
   if (auto bound = getGroupUtilizationBound(spec_)) {
     initilizePerGroupUtilizationBounds(*bound);
   }
+  if (auto bundleUtilization = spec_.groupBundleUtilization().as_const()) {
+    initializeBundledUtilization(*bundleUtilization);
+  }
+}
+
+void CapacitySpecBuilder::initializeBundledUtilization(
+    const GroupBundleUtilization& bundleUtilization) {
+  checkBundledUtilizationDimension(*universe_, dimensionId_);
+  const auto partitionId =
+      universe_->getPartitionId(*bundleUtilization.partitionName());
+  if (!universe_->getPartition(partitionId).isDisjoint()) {
+    throw std::runtime_error(
+        fmt::format(
+            "GroupBundleUtilization requires a disjoint partition, but partition {} has overlapping groups",
+            *bundleUtilization.partitionName()));
+  }
+  BundledUtilization result{
+      .partitionId = partitionId,
+      .scopeId = universe_->getScopeId(*bundleUtilization.scope()),
+      .scopeItemToBundleItems = {},
+  };
+  const auto& configuredScope = universe_->getScope(result.scopeId);
+  const auto& capacityScope = universe_->getScope(scopeId_);
+  const auto getContainingCapacityScopeItem =
+      [&](ScopeItemId configuredScopeItemId) -> std::optional<ScopeItemId> {
+    const auto& containerIds =
+        configuredScope.getContainerIds(configuredScopeItemId);
+    if (containerIds.empty()) {
+      throw std::runtime_error(
+          fmt::format(
+              "GroupBundleUtilization requires {} {} to contain at least one container",
+              universe_->getEntityName(result.scopeId),
+              universe_->getEntityName(configuredScopeItemId)));
+    }
+    const auto capacityScopeItemId =
+        capacityScope.getScopeItemId(*containerIds.begin());
+    for (const auto containerId : containerIds) {
+      if (capacityScope.getScopeItemId(containerId) != capacityScopeItemId) {
+        throw std::runtime_error(
+            fmt::format(
+                "GroupBundleUtilization requires {} {} to be contained in a single item of scope {}",
+                universe_->getEntityName(result.scopeId),
+                universe_->getEntityName(configuredScopeItemId),
+                universe_->getEntityName(scopeId_)));
+      }
+    }
+    return capacityScopeItemId;
+  };
+
+  Map<double, std::shared_ptr<const std::vector<GroupId>>> sizeToGroupIds;
+  for (const auto& [bundleItemName, bundleSize] :
+       *bundleUtilization.bundleSizes()) {
+    const auto bundleItemId =
+        universe_->getScopeItemId(result.scopeId, bundleItemName);
+    const auto capacityScopeItemId =
+        getContainingCapacityScopeItem(bundleItemId);
+    if (!capacityScopeItemId) {
+      continue;
+    }
+    auto& groupIds = sizeToGroupIds[bundleSize];
+    if (!groupIds) {
+      groupIds = getBundleQualifiedGroups(
+          *universe_, result.partitionId, dimensionId_, bundleSize);
+    }
+    result.scopeItemToBundleItems[*capacityScopeItemId].push_back(
+        {.scopeItemId = bundleItemId,
+         .size = bundleSize,
+         .groupIds = groupIds});
+  }
+  bundledUtilization_ = std::move(result);
 }
 
 UtilMetric CapacitySpecBuilder::getMappedUtilMetric(
@@ -230,6 +336,19 @@ folly::coro::Task<ExprPtr> CapacitySpecBuilder::getMaybeBoundedUtil(
   if (auto bound = getGroupUtilizationBound(spec_)) {
     co_return co_await getBoundedUtil(
         expressionBuilder, metric, scopeItemId, *bound);
+  }
+  if (bundledUtilization_) {
+    if (const auto* bundleItems = folly::get_ptr(
+            bundledUtilization_->scopeItemToBundleItems, scopeItemId)) {
+      co_return co_await expressionBuilder.getBundledAbsoluteUtil(
+          metric,
+          dimensionId_,
+          scopeId_,
+          scopeItemId,
+          bundledUtilization_->partitionId,
+          bundledUtilization_->scopeId,
+          *bundleItems);
+    }
   }
   // if no bounds were specified, return the util as is
   co_return co_await expressionBuilder.getAbsoluteUtil(
@@ -577,6 +696,7 @@ void CapacitySpecBuilder::populateInvalidMoveFilter(
   const auto& objDim = universe_->getObjects().getDimension(dimensionId_);
   if (objDim.isDynamic() || objDim.isRoutingConfigBased() ||
       objDim.size() != 1 || spec_.utilizationBound().has_value() ||
+      spec_.groupBundleUtilization().has_value() ||
       objDim.only().hasNegativeValues()) {
     return;
   }

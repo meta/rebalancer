@@ -1444,6 +1444,78 @@ folly::coro::Task<ExprPtr> ExpressionBuilder::getBoundedAbsoluteUtil(
   co_return utilExpr;
 }
 
+folly::coro::Task<ExprPtr> ExpressionBuilder::getBundledAbsoluteUtil(
+    UtilMetric metric,
+    entities::DimensionId dimensionId,
+    entities::ScopeId capacityScopeId,
+    entities::ScopeItemId capacityScopeItemId,
+    entities::PartitionId partitionId,
+    entities::ScopeId configuredScopeId,
+    const std::vector<BundleItem>& bundleItems) FOLLY_TS_REQUIRES(!applyfunc) {
+  if (!universe_->getPartition(partitionId).isDisjoint()) {
+    throw std::runtime_error(
+        fmt::format(
+            "BundledUtil is not supported for overlapping partition {}",
+            universe_->getEntityName(partitionId)));
+  }
+
+  auto getBundledItemUtil =
+      [&, this](const BundleItem& bundleItem) -> folly::coro::Task<ExprPtr> {
+    const auto key = std::make_tuple(
+        metric,
+        dimensionId,
+        partitionId,
+        configuredScopeId,
+        bundleItem.scopeItemId,
+        bundleItem.size);
+    co_return co_await bundledItemAbsoluteUtilCache_.getSavedOrCompute(
+        key, [&, this]() -> folly::coro::Task<ExprPtr> {
+          auto utilExpr = const_expr(0, *universe_);
+          for (const auto groupId : *bundleItem.groupIds) {
+            auto groupUtil = co_await getAbsoluteUtil(
+                metric,
+                dimensionId,
+                configuredScopeId,
+                bundleItem.scopeItemId,
+                partitionId,
+                groupId);
+            inplace_add(
+                utilExpr,
+                floor(std::move(groupUtil) / bundleItem.size),
+                bundleItem.size);
+          }
+          co_return utilExpr;
+        });
+  };
+
+  const auto& configuredScope = universe_->getScope(configuredScopeId);
+  auto utilExpr = const_expr(0, *universe_);
+  size_t bundledContainerCount = 0;
+  for (const auto& bundleItem : bundleItems) {
+    inplace_add(utilExpr, co_await getBundledItemUtil(bundleItem));
+    bundledContainerCount +=
+        configuredScope.getContainerIds(bundleItem.scopeItemId).size();
+  }
+
+  const auto containerCount = universe_->getScope(capacityScopeId)
+                                  .getContainerIds(capacityScopeItemId)
+                                  .size();
+  if (bundledContainerCount < containerCount) {
+    inplace_add(
+        utilExpr,
+        co_await getAbsoluteUtil(
+            metric, dimensionId, capacityScopeId, capacityScopeItemId));
+    for (const auto& bundleItem : bundleItems) {
+      inplace_add(
+          utilExpr,
+          co_await getAbsoluteUtil(
+              metric, dimensionId, configuredScopeId, bundleItem.scopeItemId),
+          -1);
+    }
+  }
+  co_return utilExpr;
+}
+
 std::vector<entities::ScopeItemId> ExpressionBuilder::getNestedImage(
     entities::ScopeId outerScopeId,
     entities::ScopeId innerScopeId,

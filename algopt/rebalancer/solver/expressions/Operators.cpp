@@ -18,6 +18,7 @@
 #include "algopt/rebalancer/solver/expressions/BipartiteSwaps.h"
 #include "algopt/rebalancer/solver/expressions/BoundsOverride.h"
 #include "algopt/rebalancer/solver/expressions/Ceil.h"
+#include "algopt/rebalancer/solver/expressions/Floor.h"
 #include "algopt/rebalancer/solver/expressions/LinearSum.h"
 #include "algopt/rebalancer/solver/expressions/Log.h"
 #include "algopt/rebalancer/solver/expressions/Max.h"
@@ -551,7 +552,7 @@ ExprPtr ceil(ExprPtr expr) {
 }
 
 ExprPtr floor(ExprPtr expr) {
-  return -1 * ceil(-1 * std::move(expr));
+  return make_shared<Floor>(expr);
 }
 
 ExprPtr step_mod_k(ExprPtr expr, int k) {
