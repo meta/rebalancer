@@ -19,6 +19,7 @@
 #include "algopt/rebalancer/solver/utils/OneObjectPerGroup.h"
 
 #include <folly/container/irange.h>
+#include <folly/String.h>
 
 namespace facebook::rebalancer {
 
