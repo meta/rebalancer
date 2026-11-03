@@ -479,36 +479,36 @@ CO_TEST_F(FixedSourceMoveTypeTest, NotSampledBundleMoves) {
 }
 
 CO_TEST_F(FixedSourceMoveTypeTest, SampledBundleMoves) {
-  interface::SingleFixedSourceMoveTypeSpec spec;
-  spec.specialContainer() = "container2";
-
   constexpr int bundleSize = 2;
-  addObjectBundleFormationHints("container1", "partition", bundleSize, spec);
-  constexpr int sampleSize = 10;
-  FixedSourceMoveType::makeSampled(spec, sampleSize);
-
-  FixedSourceMoveType moveType(interface::LocalSearchSolverSpec(), spec);
-
+  constexpr int numBundles = 20;
   const auto universe = co_await setUpUniverse(
       /*numObjects=*/100,
       /*initialObjectsInContainer1=*/0,
-      PartitionSpec{.name = "partition", .numGroups = 20});
+      PartitionSpec{.name = "partition", .numGroups = numBundles});
 
   createProblem(
       /*objectiveTuple=*/{const_expr(0, *universe)},
       /*constraint=*/const_expr(0, *universe));
 
-  auto bestResult = moveType.findBestMove(
-      getMovesEvaluator(),
-      container(1) /*hotContainer*/,
-      getMoveStatsAggregator(),
-      getEmptySearchHints(),
-      std::numeric_limits<double>::max() /*timelimit*/);
+  const auto countMovesEvaluated = [&](const int sampleSize) {
+    interface::SingleFixedSourceMoveTypeSpec spec;
+    spec.specialContainer() = "container2";
+    addObjectBundleFormationHints("container1", "partition", bundleSize, spec);
+    FixedSourceMoveType::makeSampled(spec, sampleSize);
+    FixedSourceMoveType moveType(interface::LocalSearchSolverSpec(), spec);
+    moveType.findBestMove(
+        getMovesEvaluator(),
+        container(1) /*hotContainer*/,
+        getMoveStatsAggregator(),
+        getEmptySearchHints(),
+        std::numeric_limits<double>::max() /*timelimit*/);
+    return getTotalMovesEvaluated();
+  };
 
-  EXPECT_NEAR(
-      sampleSize * bundleSize,
-      getTotalMovesEvaluated(),
-      sampleSize * bundleSize * 0.1); // 10% error allowed
+  // The sample size counts bundles, so a sample size equal to the number of
+  // bundles keeps every bundle, and a sample size of 0 keeps none.
+  EXPECT_EQ(numBundles * bundleSize, countMovesEvaluated(numBundles));
+  EXPECT_EQ(0, countMovesEvaluated(0));
 }
 
 } // namespace facebook::rebalancer::packer::tests
