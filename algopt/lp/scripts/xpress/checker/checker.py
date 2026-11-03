@@ -194,11 +194,11 @@ class Checker:
 
         print(f"python version tuple: [{platform.python_version_tuple()[:2]}]")
         print(f"numpy version: [{np.version.version}]")
-        self.xp_version = xp.getversion()
+        self.xp_version = xp.getVersion()
         print(f"xpress version: [{self.xp_version}]")
 
         try:
-            ndays = xp.getdaysleft()
+            ndays = xp.getDaysLeft()
         except RuntimeError:
             print("This is not an evaluation license")
             ndays = 0
@@ -206,10 +206,9 @@ class Checker:
             print(f"This is an evaluation license which expires in {ndays} days")
         self.xp_days_left = ndays
 
-        print(f"xpress license error message: [{xp.getlicerrmsg()}]")
         print("xpress banner:")
         print("--------------------------------------------------------------")
-        print(xp.getbanner())
+        print(xp.getBanner())
         print("--------------------------------------------------------------")
 
         print("\n")
