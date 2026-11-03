@@ -237,6 +237,9 @@ int XpressProblem::customCallback(XPRSprob prob, void* data) {
 void XpressProblem::solveForObjectiveAt(
     int pos,
     std::optional<double> timeLimit) {
+  if (usesNativeExpressions()) {
+    clearNativeConstraints(problem_.getXPRSprob());
+  }
   // set objective
   auto objective = getObjectiveAt(pos);
   setObjective(objective);
@@ -752,24 +755,24 @@ void XpressProblem::addStartValue(
   }
 }
 
-void XpressProblem::applyNativeConstraints(XPRSprob xprob) {
-  // Called after loadMat() finalizes column indices, once per objective solve.
-  // XPRSaddpwlcons / XPRSaddgencons are additive, so first remove our own
-  // constraints left over from a previous solve to keep re-application
-  // idempotent. We track both the count and the starting index recorded when
-  // the constraints were first added (ownedPwl/GenConsStartIdx_) so that
-  // deletion targets exactly our additions regardless of what other code paths
-  // may have added before ours.
-  //
-  // Index-stability assumptions this deletion-by-range relies on:
-  //  (a) No other code path adds or deletes PWL/general constraints between the
-  //      previous solve and this call, so our additions remain the contiguous
-  //      tail [ownedStartIdx, ownedStartIdx + nOwned).
-  //  (b) Xpress preserves stable, contiguous indices for surviving constraints
-  //      across XPRSdelpwlcons / XPRSdelgencons (i.e. it does not gap-fill or
-  //      renumber the constraints we did not delete). Since we only ever delete
-  //      our own tail range and re-add immediately afterwards, no surviving
-  //      constraint is renumbered in practice.
+void XpressProblem::retainNativeColumn(const VariableImpl& variable) {
+  if (!nativeColumns_) {
+    nativeColumns_ = problem_.newCtr();
+    if (!nativeColumns_->isValid() ||
+        nativeColumns_->setIncludeVars(true) != 0) {
+      throw SolverError("Could not retain native result columns in BCL");
+    }
+  }
+  // Non-binding expressions retain columns without adding mathematical rows.
+  const auto& xpressVariable = dynamic_cast<const XpressVariable&>(variable);
+  if (nativeColumns_->addTerm(xpressVariable.get()) != 0) {
+    throw SolverError("Could not register native result column in BCL");
+  }
+}
+
+void XpressProblem::clearNativeConstraints(XPRSprob xprob) {
+  // Delete our native additions while their indices are still valid, before
+  // an objective change or BCL loadMat() discards the native matrix.
   if (nOwnedPwlCons_ > 0) {
     std::vector<int> pwlInd(nOwnedPwlCons_);
     std::iota(pwlInd.begin(), pwlInd.end(), ownedPwlConsStartIdx_);
@@ -791,13 +794,15 @@ void XpressProblem::applyNativeConstraints(XPRSprob xprob) {
             "XPRSdelgencons failed (nOwnedGenCons={})", nOwnedGenCons_));
     nOwnedGenCons_ = 0;
   }
+}
 
+void XpressProblem::applyNativeConstraints(XPRSprob xprob) {
   applyNativePwlConstraints(xprob);
   applyNativeMaxConstraints(xprob);
 }
 
 void XpressProblem::applyNativePwlConstraints(XPRSprob xprob) {
-  // Record the starting index before our additions so applyNativeConstraints
+  // Record the starting index before our additions so clearNativeConstraints
   // can delete exactly [ownedPwlConsStartIdx_, ownedPwlConsStartIdx_ +
   // nOwnedPwlCons_) on the next re-application. This relies on no other code
   // path adding PWL constraints between this add and the subsequent delete.
@@ -835,7 +840,7 @@ void XpressProblem::applyNativePwlConstraints(XPRSprob xprob) {
 }
 
 void XpressProblem::applyNativeMaxConstraints(XPRSprob xprob) {
-  // Record the starting index before our additions so applyNativeConstraints
+  // Record the starting index before our additions so clearNativeConstraints
   // can delete exactly these constraints on the next re-application.
   throwIfXpressError(
       XPRSgetintattrib(xprob, XPRS_GENCONS, &ownedGenConsStartIdx_),
@@ -1172,11 +1177,16 @@ std::optional<algopt::lp::Expression> XpressProblem::addNativePwlConstraint(
   }
   yImpl->setLB(yMin);
   yImpl->setUB(yMax);
+  retainNativeColumn(*yImpl);
 
   auto xAuxExprImpl = xAuxImpl->makeExpression(1.0);
-  auto xNegImpl = x.get()->clone();
-  xNegImpl->multiply(-1.0);
-  xAuxExprImpl->add(xNegImpl);
+  if (const auto xExprImpl = x.get()) {
+    auto xNegImpl = xExprImpl->clone();
+    xNegImpl->multiply(-1.0);
+    xAuxExprImpl->add(xNegImpl);
+  } else {
+    xAuxExprImpl->add(-x.getConstant());
+  }
   newConstraint(xAuxExprImpl->makeEqualZeroRelation(), "pwl_x_link");
 
   nativePwlConstraints_.push_back({xAuxImpl, yImpl, points});
@@ -1198,6 +1208,7 @@ std::optional<algopt::lp::Expression> XpressProblem::addNativeMaxConstraint(
   // TODO: tighten the UB to max(ub_i) across inputs once LP expression bound
   // tracking is available, to strengthen the LP relaxation.
   auto resultImpl = makeVar("max_result");
+  retainNativeColumn(*resultImpl);
 
   std::vector<std::shared_ptr<VariableImpl>> inputVarImpls;
   inputVarImpls.reserve(inputs.size());

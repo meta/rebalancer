@@ -153,7 +153,9 @@ class XpressProblem : public ProblemImpl {
       const char* solutionName,
       int32_t processingStatus);
   static int customCallback(XPRSprob xprsProblem, void* data);
+  void retainNativeColumn(const VariableImpl& variable);
   bool usesNativeExpressions() const;
+  void clearNativeConstraints(XPRSprob xprob);
   void applyNativeConstraints(XPRSprob xprob);
   void applyNativePwlConstraints(XPRSprob xprob);
   void applyNativeMaxConstraints(XPRSprob xprob);
@@ -168,13 +170,9 @@ class XpressProblem : public ProblemImpl {
 
   // Specs for native PWL/Max constraints deferred until after loadMat().
   // XPRSaddpwlcons / XPRSaddgencons need column indices that are only valid
-  // after XPRBloadmat. We store the BCL variable pointers here during model
-  // building and apply the C API calls in solveForObjectiveAt() after
-  // loadMat(). The lists persist across multi-objective solves so that the
-  // native constraints are re-applied before each solve. applyNativeConstraints
-  // first removes any PWL/general constraints left over from a previous solve,
-  // so re-application is idempotent and constraints are never duplicated across
-  // objectives.
+  // after XPRBloadmat. The lists persist across multi-objective solves.
+  // clearNativeConstraints() removes our previous additions before BCL reloads
+  // the matrix, and applyNativeConstraints() uses the new column indices.
   struct NativePwlSpec {
     std::shared_ptr<VariableImpl> xVar; // auxiliary BCL input variable
     std::shared_ptr<VariableImpl> yVar; // BCL result variable
@@ -184,6 +182,7 @@ class XpressProblem : public ProblemImpl {
     std::shared_ptr<VariableImpl> resultVar;
     std::vector<std::shared_ptr<VariableImpl>> inputVars;
   };
+  std::optional<dashoptimization::XPRBctr> nativeColumns_;
   std::vector<NativePwlSpec> nativePwlConstraints_;
   std::vector<NativeMaxSpec> nativeMaxConstraints_;
   // Count and starting index of PWL / general constraints we registered in the
