@@ -19,6 +19,8 @@
 #include "algopt/rebalancer/solver/utils/ExclusiveGroups.h"
 #include <algopt/rebalancer/materializer/utils/ExpressionBuilder.h>
 
+#include <folly/String.h>
+
 #include <memory>
 
 using namespace facebook::rebalancer::entities;
