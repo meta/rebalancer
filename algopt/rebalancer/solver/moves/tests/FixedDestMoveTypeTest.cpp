@@ -65,7 +65,6 @@ TEST_F(FixedDestMoveTypeTest, MakeSampled) {
 
 CO_TEST_F(FixedDestMoveTypeTest, NotSampled) {
   co_await setUpProblem();
-  buildEquivalenceIndex();
 
   auto config = interface::LocalSearchSolverSpec();
   config.specialContainer() = "container1";
@@ -89,7 +88,6 @@ CO_TEST_F(FixedDestMoveTypeTest, NotSampled) {
 
 CO_TEST_F(FixedDestMoveTypeTest, Sampled) {
   co_await setUpProblem();
-  buildEquivalenceIndex();
 
   auto config = interface::LocalSearchSolverSpec();
   config.specialContainer() = "container1";
@@ -114,7 +112,6 @@ CO_TEST_F(FixedDestMoveTypeTest, Sampled) {
 
 CO_TEST_F(FixedDestMoveTypeTest, SampledWithSpecialContainer) {
   co_await setUpProblem();
-  buildEquivalenceIndex();
 
   auto config = interface::LocalSearchSolverSpec();
 

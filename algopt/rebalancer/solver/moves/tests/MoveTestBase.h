@@ -63,9 +63,6 @@ class MoveTestBaseT : public T,
 
   void setEquivalenceSets(EquivalenceSets equivalenceSets);
 
-  // Builds the index CoreLocalSearchSolve builds when a stage starts.
-  void buildEquivalenceIndex();
-
   int64_t getTotalMovesEvaluated();
 
   void verifyMovesAreAsExpected(

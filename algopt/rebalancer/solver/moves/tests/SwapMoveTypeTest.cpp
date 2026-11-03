@@ -751,47 +751,37 @@ CO_TEST_F(SwapMoveTypeFilterTest, FilterReducesEvaluatedSwaps) {
   swapSpec.greedyOnDst() = true;
   swapSpec.greedyOnSrc() = true;
 
+  const auto findBestMove = [&] {
+    return SwapMoveType(interface::LocalSearchSolverSpec{}, swapSpec)
+        .findBestMove(
+            getMovesEvaluator(),
+            container(1),
+            getMoveStatsAggregator(),
+            getEmptySearchHints(),
+            std::numeric_limits<double>::max());
+  };
+
   // Without filter
-  auto problemNoFilter =
-      createTestProblem(universe, objectiveTuple, const_expr(0, *universe));
-  const MovesEvaluator evalNoFilter(*problemNoFilter, 0, 1, "stage");
-  MoveStatsAggregator statsNoFilter(universe->getPrecision());
-  auto resultNoFilter =
-      SwapMoveType(interface::LocalSearchSolverSpec{}, swapSpec)
-          .findBestMove(
-              evalNoFilter,
-              container(1),
-              statsNoFilter,
-              SearchHints(SearchHintsConfig()),
-              std::numeric_limits<double>::max());
+  createProblem(objectiveTuple, const_expr(0, *universe));
+  const auto resultNoFilter = findBestMove();
+  const auto numEvalsNoFilter = getTotalMovesEvaluated();
 
   // With filter: block object1 from container2
   auto filter = std::make_unique<InvalidMoveFilter>(numObjects, numContainers);
   filter->markInvalid({object(1)}, container(2));
-  auto problemWithFilter = createTestProblem(
-      universe,
+  createProblem(
       objectiveTuple,
       const_expr(0, *universe),
+      /*higherPriorityObjConfig=*/std::nullopt,
       /*nonAcceptingContainers=*/{},
-      /*config=*/{},
-      /*performInitialFullApply=*/true,
-      /*enableParallelizedBoundsComputing=*/false,
       std::move(filter));
-  const MovesEvaluator evalWithFilter(*problemWithFilter, 0, 1, "stage");
-  MoveStatsAggregator statsWithFilter(universe->getPrecision());
-  auto resultWithFilter =
-      SwapMoveType(interface::LocalSearchSolverSpec{}, swapSpec)
-          .findBestMove(
-              evalWithFilter,
-              container(1),
-              statsWithFilter,
-              SearchHints(SearchHintsConfig()),
-              std::numeric_limits<double>::max());
+  const auto resultWithFilter = findBestMove();
+  const auto numEvalsWithFilter = getTotalMovesEvaluated();
 
   // Without filter: 4 swap evaluations. With object1 blocked from
   // container2: 2 swap pairs involving object1→container2 are skipped.
-  EXPECT_EQ(statsNoFilter.getGlobalStats().getTotalMoves(), 4);
-  EXPECT_EQ(statsWithFilter.getGlobalStats().getTotalMoves(), 2);
+  EXPECT_EQ(numEvalsNoFilter, 4);
+  EXPECT_EQ(numEvalsWithFilter, 2);
   EXPECT_EQ(
       resultNoFilter.getMoveSet().size(), resultWithFilter.getMoveSet().size());
   for (size_t i = 0; i < resultNoFilter.getMoveSet().size(); ++i) {

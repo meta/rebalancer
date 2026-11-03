@@ -46,6 +46,9 @@ void MoveTestBaseT<T>::createProblem(
       /*performInitialFullApply=*/true,
       /*enableParallelizedBoundsComputing=*/false,
       std::move(invalidMoveFilter));
+  // CoreLocalSearchSolve builds this index when a stage starts.
+  problem_->assignment.buildIndexByEquivalentSets(
+      problem_->getEquivalenceSets());
   auto objSize = problem_->objective.size();
   movesEvaluator_.emplace(
       *problem_,
@@ -83,11 +86,7 @@ template <typename T>
 void MoveTestBaseT<T>::setEquivalenceSets(EquivalenceSets equivalenceSets) {
   auto& equivSetStore = problem_->getEquivalenceSetsStore();
   equivSetStore.override(std::move(equivalenceSets));
-}
-
-template <typename T>
-void MoveTestBaseT<T>::buildEquivalenceIndex() {
-  problem_->assignment.maybeBuildAndGetObjectsIndexedByEquivSets(
+  problem_->assignment.buildIndexByEquivalentSets(
       problem_->getEquivalenceSets());
 }
 
