@@ -131,8 +131,7 @@ MoveHelper::sampleWithProb(const int sampleSize, const int setSize, RNG& rng) {
     return true;
   }
   const auto prob = static_cast<double>(sampleSize) / setSize;
-  std::bernoulli_distribution dist(prob);
-  return dist(rng);
+  return folly::Random::randBool(prob, rng);
 }
 
 } // namespace facebook::rebalancer
