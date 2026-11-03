@@ -69,7 +69,7 @@ void stress(Op op) {
 }
 
 BENCHMARK(MoveStatsAggregatorBenchmark) {
-  auto o1 = std::make_shared<LabeledExpression>("o1", nullptr, 1);
+  const auto o1 = std::make_shared<const LabeledExpression>("o1", nullptr, 1);
   const auto precision = createPrecision();
   MoveStatsAggregator aggregator1(
       std::make_shared<MoveStatsAggregatorConfig>(true, true), precision);

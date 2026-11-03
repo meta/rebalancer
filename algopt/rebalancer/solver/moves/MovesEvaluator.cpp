@@ -352,7 +352,7 @@ MovesEvaluator::ObjectiveDeltasResult MovesEvaluator::getObjectiveDeltas(
         labeledObjectiveExprs.size() +
         (labeledPenaltyExprs ? labeledPenaltyExprs->size() : 0));
     for (auto& labeledObjectiveExpr : labeledObjectiveExprs) {
-      auto expression = labeledObjectiveExpr->expression;
+      const auto& expression = labeledObjectiveExpr->expression;
       const double value = orchestrator.evaluate(expression.get(), context);
 
       myObjectiveDeltas.emplace_back(

@@ -143,8 +143,8 @@ TEST(MoveResultTest, BasicArbiter) {
 
 TEST(MoveResultTest, ValidResultExpressionGetters) {
   const auto precision = createPrecision();
-  auto o1 = make_shared<LabeledExpression>("o1", nullptr, 1);
-  auto o2 = make_shared<LabeledExpression>("o2", nullptr, 1);
+  const auto o1 = make_shared<const LabeledExpression>("o1", nullptr, 1);
+  const auto o2 = make_shared<const LabeledExpression>("o2", nullptr, 1);
   auto result = MoveResult::makeValid(
       {},
       GlobalObjectiveValue({10}),

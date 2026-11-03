@@ -25,20 +25,24 @@
 namespace facebook::rebalancer {
 
 struct ObjectiveDelta {
-  LabeledExpressionPtr objective;
+  // Refers to the problem's labeled objectives, which outlive every move
+  // result, to avoid a shared_ptr copy per delta.
+  const LabeledExpressionPtr& objective;
   double oldValue;
   double newValue;
   bool isPenalty;
 
   ObjectiveDelta(
-      LabeledExpressionPtr objective,
+      const LabeledExpressionPtr& objective,
       double oldValue,
       double newValue,
       bool isPenalty = false)
-      : objective(std::move(objective)),
+      : objective(objective),
         oldValue(oldValue),
         newValue(newValue),
         isPenalty(isPenalty) {}
+
+  ObjectiveDelta(LabeledExpressionPtr&&, double, double, bool = false) = delete;
 };
 
 using ObjectiveDeltaSet = std::vector<ObjectiveDelta>;

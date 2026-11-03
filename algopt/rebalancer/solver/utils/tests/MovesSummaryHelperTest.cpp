@@ -66,16 +66,25 @@ std::unique_ptr<Problem> makeProblem() {
       universe, {const_expr(0, *universe)}, const_expr(0, *universe));
 }
 
-ObjectiveDeltaSet makeDeltaSet(int numObjectives, double perObjectiveChange) {
-  ObjectiveDeltaSet deltaSet;
-  deltaSet.reserve(numObjectives);
+LabeledExpressionSet makeObjectives(int numObjectives) {
+  LabeledExpressionSet objectives;
+  objectives.reserve(numObjectives);
   for (const auto i : folly::irange(numObjectives)) {
-    constexpr double kOldValue = 0.01;
-    deltaSet.emplace_back(
+    objectives.push_back(
         std::make_shared<LabeledExpression>(
-            fmt::format("objective_{}", i), nullptr, 1),
-        kOldValue,
-        kOldValue - perObjectiveChange);
+            fmt::format("objective_{}", i), nullptr, 1));
+  }
+  return objectives;
+}
+
+ObjectiveDeltaSet makeDeltaSet(
+    const LabeledExpressionSet& objectives,
+    double perObjectiveChange) {
+  ObjectiveDeltaSet deltaSet;
+  deltaSet.reserve(objectives.size());
+  for (const auto& objective : objectives) {
+    constexpr double kOldValue = 0.01;
+    deltaSet.emplace_back(objective, kOldValue, kOldValue - perObjectiveChange);
   }
   return deltaSet;
 }
@@ -120,8 +129,9 @@ TEST(
   // Five sub-objectives, each changing by 0.5 * tolerance (below tolerance), so
   // their summed change is 2.5 * tolerance (above tolerance).
   constexpr int kNumObjectives = 5;
+  const auto objectives = makeObjectives(kNumObjectives);
   const auto deltaSet =
-      makeDeltaSet(kNumObjectives, /*perObjectiveChange=*/0.5 * kTolerance);
+      makeDeltaSet(objectives, /*perObjectiveChange=*/0.5 * kTolerance);
 
   // Sanity-check the setup: each individual change is sub-tolerance ...
   for (const auto& delta : deltaSet) {
@@ -150,8 +160,9 @@ TEST(MovesSummaryHelperTest, RecordsObjectiveWhenChangeExceedsTolerance) {
   const auto problem = makeProblem();
   const auto& precision = problem->getUniverse().getPrecision();
 
+  const auto objectives = makeObjectives(/*numObjectives=*/1);
   const auto deltaSet =
-      makeDeltaSet(/*numObjectives=*/1, /*perObjectiveChange=*/10 * kTolerance);
+      makeDeltaSet(objectives, /*perObjectiveChange=*/10 * kTolerance);
   const auto moveResult = makeMoveResult(deltaSet);
   EXPECT_TRUE(moveResult.isBetter(precision));
 
@@ -169,10 +180,11 @@ TEST(MovesSummaryHelperTest, RecordsObjectiveWhenChangeExceedsTolerance) {
 TEST(MovesSummaryHelperTest, LabelsPenaltyDelta) {
   const auto problem = makeProblem();
   const MoveStatsAggregator moveStats(problem->getUniverse().getPrecision());
+  const auto softConstraint = std::make_shared<const LabeledExpression>(
+      "soft_constraint", nullptr, /*weight=*/1);
   ObjectiveDeltaSet deltaSet;
   deltaSet.emplace_back(
-      std::make_shared<LabeledExpression>(
-          "soft_constraint", nullptr, /*weight=*/1),
+      softConstraint,
       /*oldValue=*/2,
       /*newValue=*/1,
       /*isPenalty=*/true);

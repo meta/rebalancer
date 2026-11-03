@@ -91,8 +91,8 @@ TEST(MoveStatsAggregatorTest, AddInvalid) {
 
 TEST(MoveStatsAggregatorTest, AddBetter) {
   const auto precision = createPrecision();
-  auto o1 = make_shared<LabeledExpression>("o1", nullptr, 1);
-  auto o2 = make_shared<LabeledExpression>("o2", nullptr, 1);
+  const auto o1 = make_shared<const LabeledExpression>("o1", nullptr, 1);
+  const auto o2 = make_shared<const LabeledExpression>("o2", nullptr, 1);
   MoveSet moves;
   moves.insert(Move(object(1000), container(100), container(200)));
   auto result = MoveResult::makeValid(
@@ -124,8 +124,8 @@ TEST(MoveStatsAggregatorTest, AddBetter) {
 
 TEST(MoveStatsAggregatorTest, AddNeutral) {
   const auto precision = createPrecision();
-  auto o1 = make_shared<LabeledExpression>("o1", nullptr, 1);
-  auto o2 = make_shared<LabeledExpression>("o2", nullptr, 1);
+  const auto o1 = make_shared<const LabeledExpression>("o1", nullptr, 1);
+  const auto o2 = make_shared<const LabeledExpression>("o2", nullptr, 1);
   MoveSet moves;
   moves.insert(Move(object(1000), container(100), container(200)));
   auto result = MoveResult::makeValid(
@@ -153,8 +153,8 @@ TEST(MoveStatsAggregatorTest, AddNeutral) {
 
 TEST(MoveStatsAggregatorTest, AddWorse) {
   const auto precision = createPrecision();
-  auto o1 = make_shared<LabeledExpression>("o1", nullptr, 1);
-  auto o2 = make_shared<LabeledExpression>("o2", nullptr, 1);
+  const auto o1 = make_shared<const LabeledExpression>("o1", nullptr, 1);
+  const auto o2 = make_shared<const LabeledExpression>("o2", nullptr, 1);
   MoveSet moves;
   moves.insert(Move(object(1000), container(100), container(200)));
   auto result = MoveResult::makeValid(
@@ -186,7 +186,7 @@ TEST(MoveStatsAggregatorTest, AddWorse) {
 
 TEST(MoveStatsAggregatorTest, Aggregate) {
   const auto precision = createPrecision();
-  auto o1 = make_shared<LabeledExpression>("o1", nullptr, 1);
+  const auto o1 = make_shared<const LabeledExpression>("o1", nullptr, 1);
   MoveStatsAggregator aggregator1(
       std::make_shared<MoveStatsAggregatorConfig>(true, true), precision);
   MoveSet moves;
@@ -312,7 +312,7 @@ TEST(MoveStatsAggregatorTest, ObjectWhitelist) {
 
 TEST(MoveStatsAggregatorTest, OnlyMasterCanAggregate) {
   const auto precision = createPrecision();
-  auto o1 = make_shared<LabeledExpression>("o1", nullptr, 1);
+  const auto o1 = make_shared<const LabeledExpression>("o1", nullptr, 1);
   MoveStatsAggregator aggregator1(
       std::make_shared<MoveStatsAggregatorConfig>(true, true), precision);
   MoveSet moves;
@@ -353,7 +353,7 @@ void stress(Op op) {
 
 TEST(MoveStatsAggregatorTest, ClobberAndAggregate) {
   const auto precision = createPrecision();
-  auto o1 = make_shared<LabeledExpression>("o1", nullptr, 1);
+  const auto o1 = make_shared<const LabeledExpression>("o1", nullptr, 1);
   MoveStatsAggregator aggregator1(
       std::make_shared<MoveStatsAggregatorConfig>(true, true), precision);
 
