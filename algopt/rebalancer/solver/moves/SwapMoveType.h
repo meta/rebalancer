@@ -15,6 +15,7 @@
 #pragma once
 
 #include "algopt/rebalancer/solver/moves/AsyncSingleMovesMoveType.h"
+#include "algopt/rebalancer/solver/moves/MoveTypeUtils.h"
 
 namespace facebook::rebalancer {
 
@@ -86,6 +87,7 @@ class SwapMoveType : public AsyncSingleMovesMoveType {
       entities::ObjectId hotObject,
       entities::ContainerId coldContainer,
       const ObjectStore& dynamicObjects,
+      const EquivSetToObjects& equivSetToColdObjects,
       MoveStatsAggregator& stats,
       bool shouldParallelizeWithinColdContainer,
       std::optional<double> timeLimit);

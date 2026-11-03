@@ -31,6 +31,25 @@
 namespace facebook::rebalancer {
 
 namespace {
+
+EquivSetToObjects getEquivSetToObjects(
+    const ObjectStore& objects,
+    const EquivalenceSets& equivalenceSets,
+    const ObjectStore::Factory& objectStoreFactory) {
+  EquivSetToObjects equivSetToObjects;
+  for (const auto object : objects) {
+    const auto equivSetId = equivalenceSets.at(object);
+    if (auto* objectsInSet = folly::get_ptr(equivSetToObjects, equivSetId)) {
+      objectsInSet->insert(object);
+    } else {
+      auto newObjectsInSet = objectStoreFactory.get();
+      newObjectsInSet.insert(object);
+      equivSetToObjects.emplace(equivSetId, std::move(newObjectsInSet));
+    }
+  }
+  return equivSetToObjects;
+}
+
 folly::Random::DefaultGenerator& getRng() {
   // make random number generator thread local to avoid contention
   static thread_local folly::Random::DefaultGenerator rng(1 /*seed*/);
@@ -100,14 +119,27 @@ MoveResult SwapMoveType::exploreSwappingHotObjectWithObjectsInColdContainer(
     }
   }
 
+  const auto& equivalenceSets = problem.getEquivalenceSets();
   std::optional<ObjectStore> groupDynamicObjects;
+  std::optional<EquivSetToObjects> equivSetToGroupColdObjects;
   if (groupInfoOpt) {
     groupDynamicObjects.emplace(problem.getDynamicObjects(
         coldContainer, groupInfoOpt->partitionName, groupInfoOpt->groupId));
+    equivSetToGroupColdObjects.emplace(getEquivSetToObjects(
+        *groupDynamicObjects,
+        equivalenceSets,
+        problem.assignment.getObjectStoreFactory()));
   }
   const auto& dynamicObjects = groupDynamicObjects
       ? *groupDynamicObjects
       : evaluator.getDynamicObjects(coldContainer);
+  // Without a group, use the index that CoreLocalSearchSolve builds when the
+  // stage starts.
+  const auto& equivSetIndex =
+      problem.assignment.getObjectsIndexedByEquivSets(equivalenceSets);
+  const auto& equivSetToColdObjects = equivSetToGroupColdObjects
+      ? *equivSetToGroupColdObjects
+      : equivSetIndex.getContainerObjects(coldContainer);
 
   return exploreAllAndGetBestResult(
       evaluator,
@@ -115,6 +147,7 @@ MoveResult SwapMoveType::exploreSwappingHotObjectWithObjectsInColdContainer(
       hotObject,
       coldContainer,
       dynamicObjects,
+      equivSetToColdObjects,
       stats,
       shouldParallelizeWithinColdContainer,
       timeLimit);
@@ -126,6 +159,7 @@ MoveResult SwapMoveType::exploreAllAndGetBestResult(
     entities::ObjectId hotObject,
     entities::ContainerId coldContainer,
     const ObjectStore& dynamicObjects,
+    const EquivSetToObjects& equivSetToColdObjects,
     MoveStatsAggregator& stats,
     bool shouldParallelizeWithinColdContainer,
     std::optional<double> timeLimit) {
@@ -166,9 +200,8 @@ MoveResult SwapMoveType::exploreAllAndGetBestResult(
       universe,
       hotObjectsInEquivSet,
       hotObject,
-      dynamicObjects,
+      equivSetToColdObjects,
       dimensionName,
-      equivalenceSets,
       dimensionScopeItemId);
 
   const auto numColdObjects = static_cast<int>(dynamicObjects.size());

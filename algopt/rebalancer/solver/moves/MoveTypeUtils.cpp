@@ -24,18 +24,6 @@ namespace facebook::rebalancer {
 
 namespace {
 
-folly::F14FastMap<entities::EquivalenceSetId, std::vector<entities::ObjectId>>
-groupObjectsByEquivalenceSet(
-    const ObjectStore& dynamicObjects,
-    const EquivalenceSets& equivalenceSets) {
-  folly::F14FastMap<entities::EquivalenceSetId, std::vector<entities::ObjectId>>
-      objectsByEquivalenceSet;
-  for (const auto object : dynamicObjects) {
-    objectsByEquivalenceSet[equivalenceSets.at(object)].push_back(object);
-  }
-  return objectsByEquivalenceSet;
-}
-
 template <typename CandidateObjects>
 ObjectBundle buildAnchoredBundle(
     const CandidateObjects& candidateObjects,
@@ -171,20 +159,16 @@ std::vector<SwapCandidateImplicit> generateDimensionBasedSwapCandidates(
     const entities::Universe& universe,
     const ObjectStore* FOLLY_NULLABLE hotObjectsInEquivSet,
     entities::ObjectId hotObject,
-    const ObjectStore& coldDynamicObjects,
+    const EquivSetToObjects& equivSetToColdObjects,
     const std::optional<std::string>& dimensionName,
-    const EquivalenceSets& equivalenceSets,
     std::optional<entities::ScopeItemId> dimensionScopeItemId) {
-  const auto coldObjectsByEquivalenceSet =
-      groupObjectsByEquivalenceSet(coldDynamicObjects, equivalenceSets);
-
   if (!dimensionName.has_value()) {
     std::vector<ObjectBundle> coldObjectBundles;
-    coldObjectBundles.reserve(coldObjectsByEquivalenceSet.size());
-    for (const auto& [_, coldObjectsInEquivSet] : coldObjectsByEquivalenceSet) {
+    coldObjectBundles.reserve(equivSetToColdObjects.size());
+    for (const auto& [_, coldObjectsInEquivSet] : equivSetToColdObjects) {
       assert(!coldObjectsInEquivSet.empty());
       coldObjectBundles.emplace_back(
-          ObjectBundle({coldObjectsInEquivSet.front()}));
+          ObjectBundle({*coldObjectsInEquivSet.begin()}));
     }
     return {std::make_tuple(
         ObjectBundle({hotObject}), std::move(coldObjectBundles))};
@@ -204,7 +188,7 @@ std::vector<SwapCandidateImplicit> generateDimensionBasedSwapCandidates(
   const auto appendColdBundleForHotBundleSize =
       [&candidatesPerHotBundleSize, &hotObjects, hotObject](
           const size_t hotBundleSize,
-          const std::vector<entities::ObjectId>& coldObjectsInEquivSet,
+          const ObjectStore& coldObjectsInEquivSet,
           const entities::ObjectId coldObject,
           const size_t coldBundleSize) {
         auto candidateIt = candidatesPerHotBundleSize.find(hotBundleSize);
@@ -225,10 +209,10 @@ std::vector<SwapCandidateImplicit> generateDimensionBasedSwapCandidates(
             coldObjectsInEquivSet, coldObject, coldBundleSize));
       };
 
-  for (const auto& [_, coldObjectsInEquivSet] : coldObjectsByEquivalenceSet) {
+  for (const auto& [_, coldObjectsInEquivSet] : equivSetToColdObjects) {
     assert(!coldObjectsInEquivSet.empty());
 
-    const auto coldObject = coldObjectsInEquivSet.front();
+    const auto coldObject = *coldObjectsInEquivSet.begin();
     const auto [hotBundleSize, coldBundleSize] = getBundleSizes(
         universe, hotObject, coldObject, dimensionId, dimensionScopeItemId);
     if (hotBundleSize != 1 && coldBundleSize != 1) {

@@ -38,6 +38,8 @@ using SwapCandidate = std::pair<ObjectBundle, ObjectBundle>;
 using SwapCandidateImplicit =
     std::tuple<ObjectBundle, std::vector<ObjectBundle>>;
 
+using EquivSetToObjects = PackerMap<entities::EquivalenceSetId, ObjectStore>;
+
 std::function<bool(entities::ContainerId)> getAcceptingContainersCheckFunc(
     const Problem& problem,
     entities::ContainerId hotContainer);
@@ -245,9 +247,8 @@ std::vector<SwapCandidateImplicit> generateDimensionBasedSwapCandidates(
     const entities::Universe& universe,
     const ObjectStore* FOLLY_NULLABLE hotObjectsInEquivSet,
     entities::ObjectId hotObject,
-    const ObjectStore& coldDynamicObjects,
+    const EquivSetToObjects& equivSetToColdObjects,
     const std::optional<std::string>& dimensionName,
-    const EquivalenceSets& equivalenceSets,
     std::optional<entities::ScopeItemId> dimensionScopeItemId = std::nullopt);
 
 template <class Input>
