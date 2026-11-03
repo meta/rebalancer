@@ -1,7 +1,9 @@
 // (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
 
-#include "license_manager/XpressSetup.h" // @manual=fbsource//third-party/xpress/9.9.1/license_manager:xpress_cpp_setup
-#include "xpress.hpp" // @manual=fbsource//third-party/xpress/9.9.1:xpress
+#include "license_manager/XpressSetup.h" // @manual=fbsource//third-party/xpress:xpress_cpp_setup
+// These tests exercise Meta's patches to the vendored Xpress SDK headers.
+// ast-grep-ignore: common/cpp/prefer-opal
+#include "xpress.hpp" // @manual=fbsource//third-party/xpress:xpress
 
 #include <gtest/gtest.h>
 
