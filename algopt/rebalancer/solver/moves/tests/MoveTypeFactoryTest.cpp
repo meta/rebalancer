@@ -42,6 +42,7 @@
 #include <gtest/gtest.h>
 #include <thrift/lib/cpp2/protocol/Serializer.h>
 
+#include <memory>
 #include <utility>
 
 using namespace facebook::rebalancer;
@@ -807,6 +808,33 @@ static void checkFixedDestSwapMultiMoveType(std::shared_ptr<MoveType> move) {
 
   const auto movePtr = dynamic_cast<FixedDestSwapMultiMoveType*>(move.get());
   EXPECT_TRUE(!!movePtr);
+}
+
+TEST_F(MoveTypeFactoryTest, fixedDestinationSwapSkipsSameContainer) {
+  // The fixture's only container already owns its object. Swapping with
+  // that same container cannot improve any objective, in either search mode
+  // or allotment representation, and must perform no evaluations.
+  for (const bool greedy : {false, true}) {
+    for (const bool adaptive : {false, true}) {
+      SCOPED_TRACE(::testing::Message() << greedy << ", " << adaptive);
+      FixedDestSwapMultiMoveTypeSpec spec;
+      spec.specialContainer() = "container0";
+      spec.greedyOnSrc() = greedy;
+      auto metadata = std::make_shared<RasLocalSearchMetadata>();
+      metadata->useAdaptiveAllotments() = adaptive;
+      spec.rasLocalSearchMetadata() = std::move(metadata);
+      const LocalSearchSolverSpec solverSpec;
+      FixedDestSwapMultiMoveType move(solverSpec, spec);
+      const auto result = move.findBestMove(
+          getMovesEvaluator(),
+          getProblem().containerId("container0"),
+          getMoveStatsAggregator(),
+          getEmptySearchHints(),
+          1.0);
+      EXPECT_TRUE(result.getMoveSet().empty());
+      EXPECT_EQ(getTotalMovesEvaluated(), 0);
+    }
+  }
 }
 
 TEST_F(MoveTypeFactoryTest, createFixedDestSwapMultiMoveType) {

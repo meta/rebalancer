@@ -71,6 +71,11 @@ MoveResult FixedDestSwapMultiMoveType::findBestMove(
   // arbitrary choice, but assuming that special container is the dst, we can
   // try to be greedy on src container depending on the move type setting spec_
   auto dstContainer = p.containerId(*spec_.specialContainer());
+  // Swapping a container with itself cannot change the assignment. Avoid
+  // generating and evaluating the Cartesian product of its own bundles.
+  if (hotContainer == dstContainer) {
+    return MoveResult::makeEmpty();
+  }
 
   // If the move type has swap ratio dimension configured, 1:k swap is required
   // and the swap ratio is determined based on the hotObject and the
