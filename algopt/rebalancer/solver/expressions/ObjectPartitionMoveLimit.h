@@ -91,6 +91,16 @@ class ObjectPartitionMoveLimit : public Expression {
 
   void updateExprForLp();
 
+  struct MoveCostDestination;
+  const entities::Partition* getSharedCostPartition() const;
+  void mergeDenseEquivalenceSets(
+      EquivalenceSets& equivalenceSets,
+      const std::vector<MoveCostDestination>& destinations) const;
+  void mergeSparseEquivalenceSets(
+      EquivalenceSets& equivalenceSets,
+      const std::vector<MoveCostDestination>& destinations,
+      double defaultValue) const;
+
   void set_directly_affected_containers();
   double moveCost(entities::GroupId group, double groupDeviation) const;
 
