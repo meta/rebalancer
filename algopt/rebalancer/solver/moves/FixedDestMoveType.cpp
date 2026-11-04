@@ -207,10 +207,10 @@ MoveResult FixedDestMoveType::findBestMoveWithBundleOptions(
 
     const auto& filter = problem.getInvalidMoveFilter();
     const auto shouldKeepCandidate =
-        [&filter](
+        [&filter, &stats](
             const std::pair<ObjectBundle, entities::ContainerId>& candidate) {
           const auto& [objectBundle, destContainer] = candidate;
-          return !anyMoveInvalid(filter, objectBundle, destContainer);
+          return !anyMoveInvalid(filter, objectBundle, destContainer, stats);
         };
     // evaluate moves from all containers in parallel
     auto result = MoveHelper::findBest(

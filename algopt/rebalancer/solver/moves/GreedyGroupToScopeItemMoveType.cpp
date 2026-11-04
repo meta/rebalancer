@@ -106,7 +106,8 @@ MoveSet generateRandomSampleAndMoveSet(
     std::vector<entities::ContainerId>& allContainers,
     const std::vector<entities::ObjectId>& groupObjectIds,
     const Problem& problem,
-    folly::Random::DefaultGenerator& rng) {
+    folly::Random::DefaultGenerator& rng,
+    MoveStatsAggregator& stats) {
   std::shuffle(allContainers.begin(), allContainers.end(), rng);
 
   const auto* const filter = problem.getInvalidMoveFilter();
@@ -117,7 +118,7 @@ MoveSet generateRandomSampleAndMoveSet(
     auto sourceContainer = problem.assignment.getContainer(hotObject);
     auto destinationContainer = allContainers.at(i);
     if (sourceContainer != destinationContainer &&
-        isMoveInvalid(filter, hotObject, destinationContainer)) {
+        isMoveInvalid(filter, hotObject, destinationContainer, stats)) {
       return MoveSet{};
     }
 
@@ -180,7 +181,7 @@ MoveResult GreedyGroupToScopeItemMoveType::exploreMovingGroup(
             MoveResult bestResult = MoveResult::makeEmpty();
             for (const auto _ : folly::irange(nSampleSetsToExplore_)) {
               auto candidateMoveSet = generateRandomSampleAndMoveSet(
-                  containerIds, groupObjectIds, problem, rng);
+                  containerIds, groupObjectIds, problem, rng, stats);
               if (candidateMoveSet.empty()) {
                 continue;
               }

@@ -31,7 +31,8 @@ std::string SwapFullContainersMoveType::name() const {
 bool SwapFullContainersMoveType::canSwapObjects(
     const MovesEvaluator& evaluator,
     entities::ContainerId hot_container,
-    entities::ContainerId cold_container) {
+    entities::ContainerId cold_container,
+    MoveStatsAggregator& stats) {
   const auto& problem = evaluator.getProblem();
   if (problem.not_accepting_containers.contains(hot_container) &&
       !isContainerEmpty(evaluator, cold_container)) {
@@ -42,7 +43,7 @@ bool SwapFullContainersMoveType::canSwapObjects(
                                      entities::ContainerId dst) {
     for (auto object : problem.assignment.getObjects(src)) {
       if (problem.fixed_objects.contains(object) ||
-          isMoveInvalid(filter, object, dst)) {
+          isMoveInvalid(filter, object, dst, stats)) {
         return false;
       }
     }
@@ -74,7 +75,7 @@ MoveResult SwapFullContainersMoveType::exploreFromAllDestinations(
     entities::ContainerId hot_container,
     entities::ContainerId cold_container,
     MoveStatsAggregator& stats) {
-  if (!canSwapObjects(evaluator, hot_container, cold_container)) {
+  if (!canSwapObjects(evaluator, hot_container, cold_container, stats)) {
     return MoveResult::makeEmpty();
   }
 

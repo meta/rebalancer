@@ -33,14 +33,15 @@ std::vector<entities::ContainerId> getValidDestinations(
     const entities::Set<entities::ContainerId>& candidates,
     entities::ObjectId object,
     const Problem& problem,
-    const InvalidMoveFilter* invalidMoveFilter) {
+    const InvalidMoveFilter* invalidMoveFilter,
+    MoveStatsAggregator& stats) {
   const auto sourceContainer = problem.assignment.getContainer(object);
   std::vector<entities::ContainerId> valid;
   valid.reserve(candidates.size());
   for (const auto containerId : candidates) {
     if (problem.not_accepting_containers.contains(containerId) ||
         containerId == sourceContainer ||
-        isMoveInvalid(invalidMoveFilter, object, containerId)) {
+        isMoveInvalid(invalidMoveFilter, object, containerId, stats)) {
       continue;
     }
     valid.push_back(containerId);
@@ -131,7 +132,8 @@ MoveResult ColocateGroupsMoveType::findBestMove(
         representativeObjectPerGroup,
         problem,
         timer,
-        timeLimit);
+        timeLimit,
+        stats);
 
     const std::function<MoveResult(MoveSet)> evaluate =
         [&stats, &evaluator](MoveSet moveset) {
@@ -164,7 +166,8 @@ std::vector<MoveSet> ColocateGroupsMoveType::getMoveSetsForRelatedGroups(
     const std::vector<entities::ObjectId>& representativeObjectPerGroup,
     const Problem& problem,
     const algopt::Timer& timer,
-    double timeLimit) const {
+    double timeLimit,
+    MoveStatsAggregator& stats) const {
   const auto& universe = problem.getUniverse();
   const auto& colocationScope = universe.getScope(specInfo_.colocationScopeId);
   const auto* const invalidMoveFilter = problem.getInvalidMoveFilter();
@@ -207,7 +210,8 @@ std::vector<MoveSet> ColocateGroupsMoveType::getMoveSetsForRelatedGroups(
           unsampledContainers,
           representativeObjectPerGroup[i],
           problem,
-          invalidMoveFilter);
+          invalidMoveFilter,
+          stats);
 
       destinationContainersPerGroup.emplace_back(
           specInfo_.defaultSampleSize

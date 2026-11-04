@@ -127,7 +127,11 @@ CO_TEST_F(ObjectsToExploreGeneratorTest, getObjectsToExplore) {
   equivalenceSets.mappingMerge(mapping);
 
   auto objectsReferenceList = objectsGenerator.getObjectsToExplore(
-      partitionName, hotContainer, problem.initial_assignment, equivalenceSets);
+      partitionName,
+      hotContainer,
+      problem.initial_assignment,
+      equivalenceSets,
+      getMoveStatsAggregator());
   EXPECT_EQ(objectsReferenceList.size(), 5);
   std::vector<int> expectedObjectsSize = {2, 3, 2, 2, 3};
 
@@ -161,7 +165,11 @@ CO_TEST_F(
   equivalenceSets.mappingMerge(mapping);
 
   auto objectsReferenceList = objectsGenerator.getObjectsToExplore(
-      partitionName, hotContainer, problem.initial_assignment, equivalenceSets);
+      partitionName,
+      hotContainer,
+      problem.initial_assignment,
+      equivalenceSets,
+      getMoveStatsAggregator());
   EXPECT_EQ(objectsReferenceList.size(), 5);
   // all objects have same mapping, so all objects are in the same equivalent
   // set thus, for each group, we only have 1 object

@@ -41,7 +41,7 @@ MoveResult TripleLoopMoveType::exploreFromAllSingleMoves(
   const auto* const filter = evaluator.getProblem().getInvalidMoveFilter();
   if (evaluator.getProblem().not_accepting_containers.contains(
           cold_container) ||
-      isMoveInvalid(filter, hotObject, cold_container)) {
+      isMoveInvalid(filter, hotObject, cold_container, stats)) {
     return best_result;
   }
 
@@ -61,7 +61,7 @@ MoveResult TripleLoopMoveType::exploreFromAllSingleMoves(
       }
       if (evaluator.getProblem().not_accepting_containers.contains(
               cold_container2) ||
-          isMoveInvalid(filter, coldObject, cold_container2)) {
+          isMoveInvalid(filter, coldObject, cold_container2, stats)) {
         continue;
       }
       const ObjectDeduper deduped_objs2(
@@ -69,7 +69,7 @@ MoveResult TripleLoopMoveType::exploreFromAllSingleMoves(
           evaluator.getDynamicObjects(cold_container2));
       for (auto cold_object2 : deduped_objs2) {
         if (evaluator.getProblem().fixed_objects.contains(cold_object2) ||
-            isMoveInvalid(filter, cold_object2, hot_container)) {
+            isMoveInvalid(filter, cold_object2, hot_container, stats)) {
           continue;
         }
         MoveSet moves;

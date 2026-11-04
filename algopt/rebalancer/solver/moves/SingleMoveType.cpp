@@ -36,7 +36,7 @@ MoveResult SingleMoveType::exploreFromAllSingleMoves(
     entities::ContainerId coldContainer,
     MoveStatsAggregator& stats) {
   const auto* const filter = evaluator.getProblem().getInvalidMoveFilter();
-  if (isMoveInvalid(filter, hotObject, coldContainer)) {
+  if (isMoveInvalid(filter, hotObject, coldContainer, stats)) {
     return MoveResult::makeEmpty();
   }
   MoveSet moves;

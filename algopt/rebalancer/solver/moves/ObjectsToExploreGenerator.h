@@ -16,6 +16,7 @@
 
 #include "algopt/rebalancer/entities/Identifiers.h"
 #include "algopt/rebalancer/entities/Universe.h"
+#include "algopt/rebalancer/solver/moves/MoveStatsAggregator.h"
 #include "algopt/rebalancer/solver/utils/Problem.h"
 
 namespace facebook::rebalancer {
@@ -32,12 +33,13 @@ class ObjectsToExploreGenerator {
 
   // Objects of each group in `partitionName` that can move into
   // `hotContainer`: objects already there, and objects `invalidMoveFilter`
-  // marks invalid for it, are left out.
+  // marks invalid for it (counted as pruned in `stats`), are left out.
   ReferenceList<const std::vector<entities::ObjectId>> getObjectsToExplore(
       const std::string& partitionName,
       entities::ContainerId hotContainer,
       const Assignment& assignment,
       const EquivalenceSets& equivalenceSets,
+      MoveStatsAggregator& stats,
       const InvalidMoveFilter* invalidMoveFilter = nullptr);
 
   // Create ObjectBundles of `bundleSize` from objects in `srcContainer`.

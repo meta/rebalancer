@@ -37,7 +37,7 @@ MoveResult SingleRandomObjectStratifiedMoveType::findBestMove(
     double timeLimit) {
   auto& problem = evaluator.getProblem();
   auto similarObjectsList = getObjectsToExplore(
-      *spec_.objectsToExploreOptions(), hotContainer, problem);
+      *spec_.objectsToExploreOptions(), hotContainer, problem, stats);
 
   const std::function<MoveResult(entities::ObjectId)>
       evaluateSampledObjectToHotContainer =

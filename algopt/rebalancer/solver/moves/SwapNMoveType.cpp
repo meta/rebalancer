@@ -89,9 +89,11 @@ MoveResult SwapNMoveType::findBestMove(
   const auto isInvalidDestination =
       [&](entities::ContainerId containerId,
           entities::ObjectId destinationObjectId) {
-        return isMoveInvalid(filter, destinationObjectId, hot_container) ||
+        return isMoveInvalid(
+                   filter, destinationObjectId, hot_container, stats) ||
             (concurrentObjects == 1 &&
-             isMoveInvalid(filter, objectIdsToMove.front(), containerId));
+             isMoveInvalid(
+                 filter, objectIdsToMove.front(), containerId, stats));
       };
 
   std::vector<std::vector<entities::ContainerId>> destinationScopeIds;
@@ -146,6 +148,7 @@ MoveResult SwapNMoveType::findBestMove(
 
   const std::function<MoveSet(int)> generate = [this,
                                                 &evaluator,
+                                                &stats,
                                                 &objectIdsToMove,
                                                 &destinationScopeIds](
                                                    int /* index */) {
@@ -169,7 +172,7 @@ MoveResult SwapNMoveType::findBestMove(
       auto container2 = evaluator.getProblem().assignment.getContainer(object2);
       // object2 -> container1 (the hot container) was already checked when
       // destinationScopeIds was built.
-      if (isMoveInvalid(filter, object1, container2)) {
+      if (isMoveInvalid(filter, object1, container2, stats)) {
         return MoveSet{};
       }
       moveset.insert(Move(object1, container1, container2));

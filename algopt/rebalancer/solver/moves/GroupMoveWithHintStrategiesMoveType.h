@@ -68,7 +68,8 @@ class GroupMoveWithHintStrategiesMoveType : public MoveType {
   MoveSet generateMoveSet(
       const ContainerIds& sampledContainers,
       const std::vector<entities::ObjectId>& objectIds,
-      const Problem& problem) const;
+      const Problem& problem,
+      MoveStatsAggregator& stats) const;
 
   MoveResult exploreMovingGroup(
       const MovesEvaluator& evaluator,
@@ -81,14 +82,16 @@ class GroupMoveWithHintStrategiesMoveType : public MoveType {
       const std::vector<entities::ContainerId>& scopeItemContainers,
       const std::vector<entities::ObjectId>& objectIds,
       const entities::ContainerId hotContainer,
-      const Problem& problem) const;
+      const Problem& problem,
+      MoveStatsAggregator& stats) const;
 
   std::vector<MoveSet> generateAllMoveSets(
       entities::ObjectId hotObjectId,
       Problem& problem,
       const entities::Map<entities::GroupId, std::vector<entities::ObjectId>>&
           secondaryGroupIdToObjects,
-      const entities::ContainerId hotContainer) const;
+      const entities::ContainerId hotContainer,
+      MoveStatsAggregator& stats) const;
 
   static MoveSet getAllToUnassigned(
       const std::vector<entities::ObjectId>& objects,
@@ -113,7 +116,8 @@ class GroupMoveWithHintStrategiesMoveType : public MoveType {
       const interface::MoveStrategyType& strategy,
       const entities::ContainerId hotContainer,
       const std::vector<entities::ObjectId>& objects,
-      const Problem& problem) const;
+      const Problem& problem,
+      MoveStatsAggregator& stats) const;
 
   static std::pair<MoveSet, std::optional<entities::GroupId>>
   findAllocatedSecondaryGroup(
@@ -132,6 +136,7 @@ class GroupMoveWithHintStrategiesMoveType : public MoveType {
       const interface::MoveStrategyType& strategy,
       entities::ContainerId exclusionContainer,
       const Problem& problem,
+      MoveStatsAggregator& stats,
       bool distinctScopeItems = false) const;
 
   std::vector<MoveSet> exploreScopeItemMoves(
@@ -141,7 +146,8 @@ class GroupMoveWithHintStrategiesMoveType : public MoveType {
           acceptingContainersPerScopeItem,
       const interface::MoveStrategyType& strategy,
       entities::ContainerId exclusionContainer,
-      const Problem& problem) const;
+      const Problem& problem,
+      MoveStatsAggregator& stats) const;
 
  private:
   GroupMoveWithHintStrategiesMoveType(

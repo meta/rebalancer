@@ -98,12 +98,12 @@ MoveResult FixedDestSwapMultiMoveType::findBestMove(
   auto srcObjectBundles =
       srcContainerMoveGenerator_
           .filterSourceObjectsByBundleSizeAndSearchSpacePartition(
-              evaluator, hotContainer, dstContainer);
+              evaluator, hotContainer, dstContainer, stats);
 
   auto dstObjectBundles =
       dstContainerMoveGenerator_
           .filterSourceObjectsByBundleSizeAndSearchSpacePartition(
-              evaluator, dstContainer, hotContainer);
+              evaluator, dstContainer, hotContainer, stats);
 
   const std::vector<BundleIdx> srcObjectBundleIds =
       getBundleIndices(srcObjectBundles, spec_.maxSampleSizeOnSrc());
@@ -182,7 +182,7 @@ MoveResult FixedDestSwapMultiMoveType::findBestMoveWithSwapRatio(
   auto srcObjectBundles =
       srcContainerMoveGenerator_
           .filterSourceObjectsByBundleSizeAndSearchSpacePartition(
-              evaluator, hotContainer, dstContainer);
+              evaluator, hotContainer, dstContainer, stats);
 
   const std::vector<BundleIdx> srcObjectBundleIds =
       getBundleIndices(srcObjectBundles, spec_.maxSampleSizeOnSrc());
@@ -257,10 +257,13 @@ MoveResult FixedDestSwapMultiMoveType::findBestMoveWithSwapRatio(
             swapRatioDimensionId,
             dimensionScopeItemId));
       };
-      it->second =
-          dstContainerMoveGenerator_
-              .filterSourceObjectsByBundleSizeAndSearchSpacePartition(
-                  evaluator, dstContainer, hotContainer, swapRatioConfig);
+      it->second = dstContainerMoveGenerator_
+                       .filterSourceObjectsByBundleSizeAndSearchSpacePartition(
+                           evaluator,
+                           dstContainer,
+                           hotContainer,
+                           stats,
+                           swapRatioConfig);
     }
 
     auto result = MoveHelper::findBest(

@@ -41,10 +41,11 @@ std::string EvalSummary::distribution(const EvalMetrics& params) const {
       : 0.0;
 
   return fmt::format(
-      ("evals per second: {:.3f}, total: {}, invalid: {:.3f}%, worse: {:.3f}%, "
+      ("evals per second: {:.3f}, total: {}, pruned: {}, invalid: {:.3f}%, worse: {:.3f}%, "
        "neutral: {:.3f}%, better: {:.3f}%, search iterations: {}, avg evals/iteration: {:.1f}"),
       totalMoves / params.evalDuration,
       totalMoves,
+      stats_.getNumPruned(),
       stats_.getInvalidMoves() * 100.0 / totalMoves,
       stats_.getWorseMoves() * 100.0 / totalMoves,
       stats_.getNeutralMoves() * 100.0 / totalMoves,
@@ -129,6 +130,7 @@ std::optional<interface::SolverEvalStats> EvalSummary::getSolverEvalStats(
   *evalStats.betterEvalsPct() = stats_.getBetterMoves() * 100.0 / totalMoves;
   *evalStats.numEvalTimeouts() = static_cast<int32_t>(stats_.getNumTimeouts());
   *evalStats.numCycles() = numCycles;
+  *evalStats.numPrunedEvals() = stats_.getNumPruned();
   return evalStats;
 }
 

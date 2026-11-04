@@ -33,7 +33,8 @@ class SwapFullContainersMoveType : public AsyncDestinationsMoveType {
   static bool canSwapObjects(
       const MovesEvaluator& evaluator,
       entities::ContainerId hot_container,
-      entities::ContainerId cold_container);
+      entities::ContainerId cold_container,
+      MoveStatsAggregator& stats);
   static bool isContainerEmpty(
       const MovesEvaluator& evaluator,
       entities::ContainerId container);

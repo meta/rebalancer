@@ -95,7 +95,8 @@ class MoveType {
   getObjectsToExplore(
       const interface::ObjectsToExploreOptions& objectsToExplore,
       entities::ContainerId hotContainerId,
-      Problem& problem);
+      Problem& problem,
+      MoveStatsAggregator& stats);
 
   static int getBundleSize(
       const interface::ObjectsToExploreOptions& exploreOptions);

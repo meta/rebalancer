@@ -50,6 +50,7 @@ MoveStats::MoveStats() : counters_{}, reasons_{}, numTimeouts_(0) {
 
 void MoveStats::clear() {
   counters_.fill(0);
+  numPruned_ = 0;
   for (auto& x : reasons_) {
     x.clear();
   }
@@ -57,6 +58,10 @@ void MoveStats::clear() {
 
 int64_t MoveStats::getNumTimeouts() const {
   return numTimeouts_;
+}
+
+int64_t MoveStats::getNumPruned() const {
+  return numPruned_;
 }
 
 int64_t MoveStats::getTotalMoves() const {
@@ -98,6 +103,10 @@ void MoveStats::incrNumTimeouts() {
   numTimeouts_ += 1;
 }
 
+void MoveStats::incrNumPruned() {
+  numPruned_ += 1;
+}
+
 void MoveStats::bump(
     Type type,
     const LabeledExpressionPtr& expression,
@@ -111,6 +120,7 @@ void MoveStats::bump(
 
 void MoveStats::aggregate(const MoveStats& other) {
   numTimeouts_ += other.numTimeouts_;
+  numPruned_ += other.numPruned_;
   for (const auto i : folly::irange(static_cast<int>(Type::COUNT))) {
     counters_[i] += other.counters_[i];
     for (const auto& [key, value] : other.reasons_[i]) {
@@ -224,6 +234,10 @@ const MoveStats& MoveStatsAggregator::getStatsForDestinationContainer(
 const MoveStats& MoveStatsAggregator::getStatsForObject(
     entities::ObjectId object) const {
   return object_.getMaster()[object];
+}
+
+void MoveStatsAggregator::incrNumPruned() {
+  global_.getLocal().incrNumPruned();
 }
 
 void MoveStatsAggregator::incrNumTimeouts(const MoveResult& moveResult) {

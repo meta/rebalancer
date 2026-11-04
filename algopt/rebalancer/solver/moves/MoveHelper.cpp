@@ -33,10 +33,10 @@ MoveResult MoveHelper::findBestMove(
   const auto* filter = problem.getInvalidMoveFilter();
   auto filteredContainers = Filter(
       coldContainers,
-      [&problem, filter, hotObject, hotContainer](auto container) {
+      [&problem, &stats, filter, hotObject, hotContainer](auto container) {
         return container != hotContainer &&
             !problem.not_accepting_containers.contains(container) &&
-            !isMoveInvalid(filter, hotObject, container);
+            !isMoveInvalid(filter, hotObject, container, stats);
       });
 
   // WARNING: The stats object is not thread safe. For that reason, it is put

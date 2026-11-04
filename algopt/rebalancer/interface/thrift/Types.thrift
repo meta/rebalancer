@@ -206,6 +206,11 @@ struct SolverEvalStats {
   // For multi-stage solvers this is the sum across all stages; each stage's
   // own cycle count is available via stagesSummaries[i].evalStats.numCycles.
   10: i32 numCycles;
+  // Number of candidate moves skipped by the invalid move filter instead of
+  // being evaluated; not included in numEvals or the percentages above. Most
+  // move types consult the filter per candidate, but some filter while building
+  // candidate lists, so this can exceed the evals the filter actually saved.
+  11: i64 numPrunedEvals;
 }
 
 // Inference stats for a learned move-filter (rebalancer-net) run that attached.

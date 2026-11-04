@@ -1518,6 +1518,7 @@ class SolverEvalStats(TypedDict, total=False):
     evalDurationSecs: float
     findWorstDurationSecs: float
     numCycles: int
+    numPrunedEvals: int
 
 
 class SolverMoveStats(TypedDict, total=False):

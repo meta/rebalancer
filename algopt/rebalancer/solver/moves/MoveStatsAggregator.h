@@ -43,6 +43,8 @@ class MoveStats {
   MoveStats();
 
   int64_t getNumTimeouts() const;
+  // Candidate moves skipped by the invalid move filter; not counted as moves.
+  int64_t getNumPruned() const;
   int64_t getTotalMoves() const;
   int64_t getInvalidMoves() const;
   int64_t getBetterMoves() const;
@@ -56,12 +58,14 @@ class MoveStats {
   bump(Type type, const LabeledExpressionPtr& expression, size_t moveSize = 1);
   void aggregate(const MoveStats& other);
   void incrNumTimeouts();
+  void incrNumPruned();
   void clear();
 
  private:
   std::array<int64_t, Type::COUNT> counters_;
   std::array<PackerMap<LabeledExpressionPtr, int64_t>, Type::COUNT> reasons_;
   int64_t numTimeouts_ = 0;
+  int64_t numPruned_ = 0;
 };
 
 struct MoveStatsAggregatorConfig {
@@ -122,6 +126,7 @@ class MoveStatsAggregator {
   /// @name Functions that can be called by any thread. These are thread safe.
   /// @{
   void incrNumTimeouts(const MoveResult& moveResult);
+  void incrNumPruned();
   void add(const MoveResult& moveResult);
   /// @}
 

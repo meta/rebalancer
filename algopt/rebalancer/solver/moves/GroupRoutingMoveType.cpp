@@ -102,7 +102,12 @@ MoveResult GroupRoutingMoveType::findBestMove(
   const std::function<MoveResult(entities::GroupId groupId)>
       exploreMovingGroup = [&](entities::GroupId groupId) {
         auto result = evaluator.evaluate(generateMoveSetFor(
-            groupId, partitionName, unassignedContainerId, problem, evaluator));
+            groupId,
+            partitionName,
+            unassignedContainerId,
+            problem,
+            evaluator,
+            stats));
         stats.add(result);
         return result;
       };
@@ -121,7 +126,8 @@ MoveSet GroupRoutingMoveType::generateMoveSetFor(
     const std::string& partitionName,
     std::optional<entities::ContainerId> unassignedContainerId,
     const Problem& problem,
-    const MovesEvaluator& evaluator) const {
+    const MovesEvaluator& evaluator,
+    MoveStatsAggregator& stats) const {
   const auto& universe = problem.getUniverse();
   const auto& objectIds = problem.getObjectIdsForGroup(partitionName, groupId);
   if (objectIds.empty()) {
@@ -171,7 +177,7 @@ MoveSet GroupRoutingMoveType::generateMoveSetFor(
       }
 
       if (problem.not_accepting_containers.contains(candidate) ||
-          isMoveInvalid(filter, repObjectId, candidate)) {
+          isMoveInvalid(filter, repObjectId, candidate, stats)) {
         continue;
       }
 

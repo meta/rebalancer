@@ -216,9 +216,10 @@ MoveResult SwapMoveType::exploreAllAndGetBestResult(
       };
   const auto& filter = problem.getInvalidMoveFilter();
   const auto shouldKeepCandidate =
-      [&filter, hotContainer, coldContainer](const SwapCandidate& candidate) {
-        return !anyMoveInvalid(filter, candidate.first, coldContainer) &&
-            !anyMoveInvalid(filter, candidate.second, hotContainer);
+      [&filter, &stats, hotContainer, coldContainer](
+          const SwapCandidate& candidate) {
+        return !anyMoveInvalid(filter, candidate.first, coldContainer, stats) &&
+            !anyMoveInvalid(filter, candidate.second, hotContainer, stats);
       };
 
   const auto evaluate = [&evaluator, &stats, hotContainer, coldContainer](
@@ -373,12 +374,12 @@ MoveResult SwapMoveType::findBestMoveWithBundleOptions(
 
   const auto& filter = problem.getInvalidMoveFilter();
   const auto shouldKeepBundleCandidate =
-      [&filter, hotContainer](
+      [&filter, &stats, hotContainer](
           const std::tuple<ObjectBundle, ObjectBundle, entities::ContainerId>&
               candidate) {
         const auto& [hotBundle, coldBundle, coldContainer] = candidate;
-        return !anyMoveInvalid(filter, hotBundle, coldContainer) &&
-            !anyMoveInvalid(filter, coldBundle, hotContainer);
+        return !anyMoveInvalid(filter, hotBundle, coldContainer, stats) &&
+            !anyMoveInvalid(filter, coldBundle, hotContainer, stats);
       };
 
   const algopt::Timer timer(true);

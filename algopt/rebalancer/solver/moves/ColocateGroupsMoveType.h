@@ -122,7 +122,8 @@ class ColocateGroupsMoveType : public MoveType {
       const std::vector<entities::ObjectId>& representativeObjectPerGroup,
       const Problem& problem,
       const algopt::Timer& timer,
-      double timeLimit) const;
+      double timeLimit,
+      MoveStatsAggregator& stats) const;
 
   static std::vector<entities::ObjectId> getRepresentativeObjectPerGroup(
       entities::GroupId hotObjectGroupId,

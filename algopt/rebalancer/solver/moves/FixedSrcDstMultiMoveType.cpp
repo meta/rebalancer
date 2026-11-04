@@ -302,7 +302,7 @@ MoveResult FixedSrcDstMultiMoveType<MoveTypeSpecT>::findBestMoveHelper(
   auto relevantObjectBundles =
       moveCandidateGenerator_
           .filterSourceObjectsByBundleSizeAndSearchSpacePartition(
-              evaluator, srcContainer, dstContainer);
+              evaluator, srcContainer, dstContainer, stats);
 
   using BundleIdx = int;
   // objects are server parts, and object group id is essentially server id
@@ -373,6 +373,7 @@ std::vector<ObjectBundle> FixedSrcDstMoveCandidateGenerator<MoveTypeSpecT>::
         const MovesEvaluator& evaluator,
         ContainerId srcContainer,
         ContainerId dstContainer,
+        MoveStatsAggregator& stats,
         std::optional<MultiObjectSelectionConfig> multiObjSelectionConfig) {
   if (!spec_.rasLocalSearchMetadata()) {
     throw std::runtime_error(
@@ -520,7 +521,7 @@ std::vector<ObjectBundle> FixedSrcDstMoveCandidateGenerator<MoveTypeSpecT>::
         // A bundle moves as a unit, so if any of its objects can never be valid
         // at the destination the whole move is dead on arrival. Drop it during
         // enumeration, before it is ever enqueued for evaluation.
-        if (!anyMoveInvalid(invalidMoveFilter, bundle, dstContainer)) {
+        if (!anyMoveInvalid(invalidMoveFilter, bundle, dstContainer, stats)) {
           moveCandidates.emplace_back(std::move(bundle));
           ++numCandidatesSelected;
           if (numCandidatesSelected >= maxSampleSizePerEquivSet) {

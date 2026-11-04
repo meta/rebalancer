@@ -111,9 +111,9 @@ MoveResult ReplicaDropMoveType::findBestMove(
         problem.configs.threadPool.get(),
         Filter(
             singleMoves,
-            [filter](const auto& singleMove) {
+            [filter, &stats](const auto& singleMove) {
               return !isMoveInvalid(
-                  filter, singleMove.first, singleMove.second);
+                  filter, singleMove.first, singleMove.second, stats);
             }),
         evaluate,
         timeLimit - timer.getSeconds(),

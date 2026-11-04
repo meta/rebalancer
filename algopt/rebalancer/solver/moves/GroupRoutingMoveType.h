@@ -49,7 +49,8 @@ class GroupRoutingMoveType : public MoveType {
       const std::string& partitionName,
       std::optional<entities::ContainerId> unassignedContainerId,
       const Problem& problem,
-      const MovesEvaluator& evaluator) const;
+      const MovesEvaluator& evaluator,
+      MoveStatsAggregator& stats) const;
 
  private:
   std::string routingConfigName_;

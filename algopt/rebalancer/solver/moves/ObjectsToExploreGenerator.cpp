@@ -14,6 +14,7 @@
 
 #include "algopt/rebalancer/solver/moves/ObjectsToExploreGenerator.h"
 
+#include "algopt/rebalancer/solver/moves/InvalidMoveFilter.h"
 #include "algopt/rebalancer/solver/moves/MoveTypeUtils.h"
 #include "algopt/rebalancer/solver/utils/ObjectDeduper.h"
 
@@ -98,6 +99,7 @@ ObjectsToExploreGenerator::getObjectsToExplore(
     entities::ContainerId hotContainer,
     const Assignment& assignment,
     const EquivalenceSets& equivalenceSets,
+    MoveStatsAggregator& stats,
     const InvalidMoveFilter* invalidMoveFilter) {
   auto partitionId = universe_.getPartitionId(partitionName);
   auto& partition = universe_.getPartition(partitionId);
@@ -110,7 +112,7 @@ ObjectsToExploreGenerator::getObjectsToExplore(
     for (auto& objectId : objectIds) {
       auto containerId = assignment.getContainer(objectId);
       if (containerId != hotContainer &&
-          !isMoveInvalid(invalidMoveFilter, objectId, hotContainer)) {
+          !isMoveInvalid(invalidMoveFilter, objectId, hotContainer, stats)) {
         objectsInGroup.push_back(objectId);
       }
     }

@@ -16,6 +16,7 @@
 
 #include "algopt/rebalancer/algopt_common/DynamicBitSet.h"
 #include "algopt/rebalancer/entities/Identifiers.h"
+#include "algopt/rebalancer/solver/moves/MoveStatsAggregator.h"
 
 #include <folly/synchronization/DelayedInit.h>
 
@@ -88,22 +89,33 @@ class InvalidMoveFilter {
   std::atomic<bool> isEmpty_{true};
 };
 
-// Returns true if `objectId` is marked invalid for `destContainer`. Returns
-// false if `filter` is null.
+// Returns true if `objectId` is marked invalid for `destContainer`, and counts
+// it as a pruned candidate in `stats`. Returns false if `filter` is null.
 inline bool isMoveInvalid(
     const InvalidMoveFilter* filter,
     entities::ObjectId objectId,
-    entities::ContainerId destContainer) {
-  return filter && filter->isMarkedInvalid(objectId, destContainer);
+    entities::ContainerId destContainer,
+    MoveStatsAggregator& stats) {
+  if (filter && filter->isMarkedInvalid(objectId, destContainer)) {
+    stats.incrNumPruned();
+    return true;
+  }
+  return false;
 }
 
 // Returns true if any object in `objectBundle` is marked invalid for
-// `destContainer`. Returns false if `filter` is null.
+// `destContainer`, and counts it as a pruned candidate in `stats`. Returns
+// false if `filter` is null.
 inline bool anyMoveInvalid(
     const InvalidMoveFilter* filter,
     const std::vector<entities::ObjectId>& objectBundle,
-    entities::ContainerId destContainer) {
-  return filter && filter->anyMarkedInvalid(objectBundle, destContainer);
+    entities::ContainerId destContainer,
+    MoveStatsAggregator& stats) {
+  if (filter && filter->anyMarkedInvalid(objectBundle, destContainer)) {
+    stats.incrNumPruned();
+    return true;
+  }
+  return false;
 }
 
 } // namespace facebook::rebalancer

@@ -231,9 +231,9 @@ MoveResult FixedSourceMoveType::findBestMove(
 
     const auto& filter = p.getInvalidMoveFilter();
     const auto shouldKeepCandidate =
-        [&filter, hotContainer](
+        [&filter, &stats, hotContainer](
             const std::pair<ObjectBundle, entities::ContainerId>& candidate) {
-          return !anyMoveInvalid(filter, candidate.first, hotContainer);
+          return !anyMoveInvalid(filter, candidate.first, hotContainer, stats);
         };
 
     // evaluate moves from all containers in a scope item in parallel

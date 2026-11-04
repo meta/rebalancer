@@ -54,7 +54,7 @@ MoveResult SingleChainMoveType::exploreChainsWithHotObjectToColdContainer(
   const auto& precision = evaluator.getProblem().getUniverse().getPrecision();
   auto bestResult = MoveResult::makeEmpty();
   const auto* const filter = evaluator.getProblem().getInvalidMoveFilter();
-  if (isMoveInvalid(filter, hotObject, coldContainer)) {
+  if (isMoveInvalid(filter, hotObject, coldContainer, stats)) {
     return bestResult;
   }
   for (auto otherContainer : evaluator.getContainers()) {
@@ -116,7 +116,7 @@ MoveResult SingleChainMoveType::exploreWithinGroupAndGetBestResult(
   PackerSet<entities::ObjectId> relevantObjects;
   for (auto object : objectsInGroup) {
     if (problem.assignment.getContainer(object) == otherContainer &&
-        !isMoveInvalid(filter, object, hotContainer)) {
+        !isMoveInvalid(filter, object, hotContainer, stats)) {
       relevantObjects.insert(object);
     }
   }
@@ -159,7 +159,7 @@ MoveResult SingleChainMoveType::exploreAllAndGetBestResult(
       &problem.getEquivalenceSets(),
       evaluator.getDynamicObjects(otherContainer));
   for (auto otherObject : otherObjects) {
-    if (isMoveInvalid(filter, otherObject, hotContainer)) {
+    if (isMoveInvalid(filter, otherObject, hotContainer, stats)) {
       continue;
     }
     bestResult.aggregate(generateMoveSetAndGetResult(

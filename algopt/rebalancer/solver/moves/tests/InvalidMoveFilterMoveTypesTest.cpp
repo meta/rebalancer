@@ -49,6 +49,7 @@ struct SearchOutcome {
   std::vector<Move> bestMoves;
   int64_t evaluatedMoves{0};
   int64_t invalidMoves{0};
+  int64_t prunedMoves{0};
 };
 } // namespace
 
@@ -138,6 +139,7 @@ class InvalidMoveFilterMoveTypesTest : public MoveTestBase {
             result.getMoveSet().begin(), result.getMoveSet().end()),
         .evaluatedMoves = stats.getGlobalStats().getTotalMoves(),
         .invalidMoves = stats.getGlobalStats().getInvalidMoves(),
+        .prunedMoves = stats.getGlobalStats().getNumPruned(),
     };
   }
 
@@ -154,6 +156,8 @@ class InvalidMoveFilterMoveTypesTest : public MoveTestBase {
 
     EXPECT_GT(withoutFilter.invalidMoves, 0);
     EXPECT_EQ(0, withFilter.invalidMoves);
+    EXPECT_EQ(0, withoutFilter.prunedMoves);
+    EXPECT_GT(withFilter.prunedMoves, 0);
     EXPECT_EQ(
         withoutFilter.evaluatedMoves - withoutFilter.invalidMoves,
         withFilter.evaluatedMoves);

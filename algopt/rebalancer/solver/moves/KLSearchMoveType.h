@@ -61,7 +61,8 @@ class KLSearchMoveType : public AsyncDestinationsMoveType {
       const ObjectStore& sourceIds,
       const PackerSet<entities::ObjectId>& removeIds,
       const InvalidMoveFilter* invalidMoveFilter,
-      entities::ContainerId toContainer);
+      entities::ContainerId toContainer,
+      MoveStatsAggregator& stats);
 
  public:
   interface::KLSearchMoveTypeSpec config_;

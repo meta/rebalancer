@@ -93,7 +93,10 @@ CO_TEST_F(FixedSrcDstMultiMoveTypeTest, ServerRegainsCapacityAfterExhaustion) {
   FixedSrcDstMoveCandidateGenerator generator(spec);
   const auto getCandidates = [&] {
     return generator.filterSourceObjectsByBundleSizeAndSearchSpacePartition(
-        getMovesEvaluator(), container("unassigned"), container("reservation"));
+        getMovesEvaluator(),
+        container("unassigned"),
+        container("reservation"),
+        getMoveStatsAggregator());
   };
 
   // s0 already has a part in 'reservation', so none of its spare parts can move

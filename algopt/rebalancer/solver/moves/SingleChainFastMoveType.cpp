@@ -88,8 +88,8 @@ MoveResult SingleChainFastMoveType::findBestMove(
         problem.configs.threadPool.get(),
         Filter(
             coldContainers,
-            [filter, hotObject](entities::ContainerId coldContainer) {
-              return !isMoveInvalid(filter, hotObject, coldContainer);
+            [filter, hotObject, &stats](entities::ContainerId coldContainer) {
+              return !isMoveInvalid(filter, hotObject, coldContainer, stats);
             }),
         evaluate,
         timeLimit - timer.getSeconds(),

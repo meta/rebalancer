@@ -48,8 +48,14 @@ class MockGroupRoutingMoveType : public GroupRoutingMoveType {
       std::optional<entities::ContainerId> unassignedContainerId,
       const Problem& problem,
       const MovesEvaluator& evaluator) {
+    MoveStatsAggregator stats(problem.getUniverse().getPrecision());
     return this->GroupRoutingMoveType::generateMoveSetFor(
-        groupId, partitionName, unassignedContainerId, problem, evaluator);
+        groupId,
+        partitionName,
+        unassignedContainerId,
+        problem,
+        evaluator,
+        stats);
   }
 };
 

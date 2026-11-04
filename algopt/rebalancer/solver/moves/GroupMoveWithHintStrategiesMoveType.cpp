@@ -110,7 +110,7 @@ MoveResult GroupMoveWithHintStrategiesMoveType::findBestMove(
         stats,
         timeLimit,
         generateAllMoveSets(
-            objectId, problem, secondaryGroupToObjects, hotContainer));
+            objectId, problem, secondaryGroupToObjects, hotContainer, stats));
     if (bestResult.isBetter(precision)) {
       return bestResult;
     }
@@ -155,7 +155,8 @@ template <typename ContainerIds>
 MoveSet GroupMoveWithHintStrategiesMoveType::generateMoveSet(
     const ContainerIds& sampledContainers,
     const std::vector<entities::ObjectId>& objectIds,
-    const Problem& problem) const {
+    const Problem& problem,
+    MoveStatsAggregator& stats) const {
   if (sampledContainers.size() < objectIds.size()) {
     return MoveSet();
   }
@@ -168,7 +169,7 @@ MoveSet GroupMoveWithHintStrategiesMoveType::generateMoveSet(
     if (sourceContainer == destinationContainer) {
       continue;
     }
-    if (isMoveInvalid(filter, hotObject, destinationContainer)) {
+    if (isMoveInvalid(filter, hotObject, destinationContainer, stats)) {
       return MoveSet();
     }
     candidateMoveSet.insert(
@@ -184,7 +185,8 @@ GroupMoveWithHintStrategiesMoveType::generateSampledContainersAndMoveSet(
     const std::vector<entities::ContainerId>& scopeItemContainers,
     const std::vector<entities::ObjectId>& objectIds,
     const entities::ContainerId containerToExcludeFromSample,
-    const Problem& problem) const {
+    const Problem& problem,
+    MoveStatsAggregator& stats) const {
   switch (strategy) {
     case interface::MoveStrategyType::RANDOM_SAMPLING_WITH_REPLACEMENT: {
       auto sampledContainersWithReplacement = getRandomSampleWithReplacement(
@@ -193,7 +195,7 @@ GroupMoveWithHintStrategiesMoveType::generateSampledContainersAndMoveSet(
           rng_,
           std::optional(containerToExcludeFromSample));
       return generateMoveSet(
-          sampledContainersWithReplacement, objectIds, problem);
+          sampledContainersWithReplacement, objectIds, problem, stats);
     }
     case interface::MoveStrategyType::RANDOM_SAMPLING_WITHOUT_REPLACEMENT: {
       auto sampledContainersWithoutReplacement = getRandomSample(
@@ -202,7 +204,7 @@ GroupMoveWithHintStrategiesMoveType::generateSampledContainersAndMoveSet(
           rng_,
           std::optional(containerToExcludeFromSample));
       return generateMoveSet(
-          sampledContainersWithoutReplacement, objectIds, problem);
+          sampledContainersWithoutReplacement, objectIds, problem, stats);
     }
   }
 }
@@ -270,7 +272,8 @@ MoveSet GroupMoveWithHintStrategiesMoveType::generateMoveSetWithScopeItemTuple(
     const interface::MoveStrategyType& strategy,
     const entities::ContainerId hotContainer,
     const std::vector<entities::ObjectId>& objects,
-    const Problem& problem) const {
+    const Problem& problem,
+    MoveStatsAggregator& stats) const {
   const auto containerToExcludeFromSample =
       unassignedContainerId_.value_or(hotContainer);
   MoveSet candidateMoveSet;
@@ -282,7 +285,8 @@ MoveSet GroupMoveWithHintStrategiesMoveType::generateMoveSetWithScopeItemTuple(
         acceptingContainersPerScopeItem[validIndex].get(),
         tertiaryObjects,
         containerToExcludeFromSample,
-        problem);
+        problem,
+        stats);
     if (partialMoveSet.empty()) {
       break;
     }
@@ -346,6 +350,7 @@ GroupMoveWithHintStrategiesMoveType::exploreTertiaryPartitionMoves(
     const interface::MoveStrategyType& strategy,
     entities::ContainerId exclusionContainer,
     const Problem& problem,
+    MoveStatsAggregator& stats,
     bool distinctScopeItems) const {
   const auto& universe = problem.getUniverse();
   const auto tertiaryPartitionId =
@@ -390,7 +395,8 @@ GroupMoveWithHintStrategiesMoveType::exploreTertiaryPartitionMoves(
           strategy,
           exclusionContainer,
           objects,
-          problem);
+          problem,
+          stats);
       if (!candidateMoveSet.empty()) {
         moveSets.push_back(std::move(candidateMoveSet));
       }
@@ -406,7 +412,8 @@ std::vector<MoveSet> GroupMoveWithHintStrategiesMoveType::exploreScopeItemMoves(
         acceptingContainersPerScopeItem,
     const interface::MoveStrategyType& strategy,
     entities::ContainerId exclusionContainer,
-    const Problem& problem) const {
+    const Problem& problem,
+    MoveStatsAggregator& stats) const {
   const auto hasUniqueSample = [&strategy](
                                    size_t numContainers, size_t numObjects) {
     return strategy ==
@@ -427,7 +434,7 @@ std::vector<MoveSet> GroupMoveWithHintStrategiesMoveType::exploreScopeItemMoves(
         : moveSetsPerScopeItem;
     for ([[maybe_unused]] const auto _ : folly::irange(numToGenerate)) {
       auto candidateMoveSet = generateSampledContainersAndMoveSet(
-          strategy, containers, objects, exclusionContainer, problem);
+          strategy, containers, objects, exclusionContainer, problem, stats);
       if (!candidateMoveSet.empty()) {
         moveSets.push_back(std::move(candidateMoveSet));
       }
@@ -441,7 +448,8 @@ std::vector<MoveSet> GroupMoveWithHintStrategiesMoveType::generateAllMoveSets(
     Problem& problem,
     const entities::Map<entities::GroupId, std::vector<entities::ObjectId>>&
         secondaryGroupIdToObjects,
-    const entities::ContainerId hotContainer) const {
+    const entities::ContainerId hotContainer,
+    MoveStatsAggregator& stats) const {
   const auto& universe = problem.getUniverse();
   auto& moveStrategies = *spec_.moveStrategies();
   auto& groupToMoveStrategy = *moveStrategies.groupToMoveStrategy();
@@ -499,6 +507,7 @@ std::vector<MoveSet> GroupMoveWithHintStrategiesMoveType::generateAllMoveSets(
           strategy,
           exclusionContainer,
           problem,
+          stats,
           *hintOptions.distinctScopeItemsAcrossTertiaryGroups());
     } else {
       newMoveSets = exploreScopeItemMoves(
@@ -507,7 +516,8 @@ std::vector<MoveSet> GroupMoveWithHintStrategiesMoveType::generateAllMoveSets(
           acceptingContainersPerScopeItem,
           strategy,
           exclusionContainer,
-          problem);
+          problem,
+          stats);
     }
 
     const bool needsBaseMoveSet = allocatedSecondaryGroupId.has_value() &&

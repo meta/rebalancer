@@ -42,9 +42,15 @@ class MockGroupMoveWithHintStrategiesMoveType
       const std::vector<entities::ObjectId>& objectIds,
       const entities::ContainerId hotContainer,
       const Problem& problem) const {
+    MoveStatsAggregator stats(problem.getUniverse().getPrecision());
     return GroupMoveWithHintStrategiesMoveType::
         generateSampledContainersAndMoveSet(
-            strategy, scopeItemContainers, objectIds, hotContainer, problem);
+            strategy,
+            scopeItemContainers,
+            objectIds,
+            hotContainer,
+            problem,
+            stats);
   }
 
   entities::Map<entities::GroupId, std::vector<entities::ObjectId>>
@@ -59,8 +65,9 @@ class MockGroupMoveWithHintStrategiesMoveType
       const entities::Map<entities::GroupId, std::vector<entities::ObjectId>>&
           secondaryGroupIdToMoveSets,
       const entities::ContainerId hotContainer) const {
+    MoveStatsAggregator stats(problem.getUniverse().getPrecision());
     return GroupMoveWithHintStrategiesMoveType::generateAllMoveSets(
-        hotObjectId, problem, secondaryGroupIdToMoveSets, hotContainer);
+        hotObjectId, problem, secondaryGroupIdToMoveSets, hotContainer, stats);
   }
 
   static MoveSet getAllToUnassigned(
@@ -92,6 +99,7 @@ class MockGroupMoveWithHintStrategiesMoveType
       entities::ContainerId exclusionContainer,
       const Problem& problem,
       bool distinctScopeItems = false) const {
+    MoveStatsAggregator stats(problem.getUniverse().getPrecision());
     return GroupMoveWithHintStrategiesMoveType::exploreTertiaryPartitionMoves(
         objects,
         tertiaryPartitionName,
@@ -101,6 +109,7 @@ class MockGroupMoveWithHintStrategiesMoveType
         strategy,
         exclusionContainer,
         problem,
+        stats,
         distinctScopeItems);
   }
 
@@ -112,13 +121,15 @@ class MockGroupMoveWithHintStrategiesMoveType
       const interface::MoveStrategyType& strategy,
       entities::ContainerId exclusionContainer,
       const Problem& problem) const {
+    MoveStatsAggregator stats(problem.getUniverse().getPrecision());
     return GroupMoveWithHintStrategiesMoveType::exploreScopeItemMoves(
         objects,
         moveSetsPerScopeItem,
         acceptingContainersPerScopeItem,
         strategy,
         exclusionContainer,
-        problem);
+        problem,
+        stats);
   }
 };
 

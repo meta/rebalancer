@@ -137,7 +137,8 @@ ReferenceList<const std::vector<entities::ObjectId>>
 MoveType::getObjectsToExplore(
     const interface::ObjectsToExploreOptions& objectsToExplore,
     entities::ContainerId hotContainerId,
-    Problem& problem) {
+    Problem& problem,
+    MoveStatsAggregator& stats) {
   auto exploreOptions = objectsToExplore.getType();
   switch (exploreOptions) {
     case interface::ObjectsToExploreOptions::Type::objectsFromGroupsSpec:
@@ -148,6 +149,7 @@ MoveType::getObjectsToExplore(
           hotContainerId,
           problem.assignment,
           problem.getEquivalenceSets(),
+          stats,
           problem.getInvalidMoveFilter());
     case interface::ObjectsToExploreOptions::Type::__EMPTY__:
       throw std::runtime_error(

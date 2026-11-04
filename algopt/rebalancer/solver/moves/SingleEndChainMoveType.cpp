@@ -38,7 +38,7 @@ MoveResult SingleEndChainMoveType::exploreFromAllSingleMoves(
     MoveStatsAggregator& stats) {
   auto best_result = MoveResult::makeEmpty();
   const auto* const filter = evaluator.getProblem().getInvalidMoveFilter();
-  if (isMoveInvalid(filter, hotObject, cold_container)) {
+  if (isMoveInvalid(filter, hotObject, cold_container, stats)) {
     return best_result;
   }
 
@@ -49,7 +49,7 @@ MoveResult SingleEndChainMoveType::exploreFromAllSingleMoves(
     for (auto other_container : evaluator.getContainers()) {
       if (other_container == hot_container ||
           other_container == cold_container ||
-          isMoveInvalid(filter, coldObject, other_container)) {
+          isMoveInvalid(filter, coldObject, other_container, stats)) {
         continue;
       }
 

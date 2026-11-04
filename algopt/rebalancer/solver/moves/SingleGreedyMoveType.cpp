@@ -70,7 +70,7 @@ MoveResult SingleGreedyMoveType::findBestMove(
       }
       if (evaluator.getProblem().not_accepting_containers.contains(
               coldContainer) ||
-          isMoveInvalid(filter, hotObject, coldContainer)) {
+          isMoveInvalid(filter, hotObject, coldContainer, stats)) {
         continue;
       }
 

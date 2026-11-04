@@ -79,6 +79,7 @@ class FixedSrcDstMoveCandidateGenerator {
       const MovesEvaluator& evaluator,
       entities::ContainerId srcContainer,
       entities::ContainerId dstContainer,
+      MoveStatsAggregator& stats,
       std::optional<MultiObjectSelectionConfig> multiObjSelectionConfig =
           std::nullopt);
 
