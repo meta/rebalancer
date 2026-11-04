@@ -16,15 +16,14 @@
 
 # pyre-strict
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 
 from algopt.rebalancer.interface.py_client.ProblemSolver import ProblemSolver
 
-# Both of these functions cannot have a return type of ProblemSolver(Async) because
-# Pyre cannot understand that they are wrapped by context managers in contextlib
-
 
 @contextmanager
-# pyre-fixme[3]: Return type must be annotated.
-def get_problem_solver(service_name: str, service_scope: str):
+def get_problem_solver(
+    service_name: str, service_scope: str
+) -> Iterator[ProblemSolver]:
     yield ProblemSolver(service_name=service_name, service_scope=service_scope)
