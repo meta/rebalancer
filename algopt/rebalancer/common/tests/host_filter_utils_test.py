@@ -67,12 +67,9 @@ class TestHostFilterUtils(BaseFacebookTestCase):
     @async_test
     async def test_query_els_for_tupperware_non_prod_hosts_exception(
         self,
-        # pyre-fixme[2]: Parameter must be annotated.
-        mock_get_all_child_services,
-        # pyre-fixme[2]: Parameter must be annotated.
-        mock_get_py3_client,
-        # pyre-fixme[2]: Parameter must be annotated.
-        mock_logging_exception,
+        mock_get_all_child_services: MagicMock,
+        mock_get_py3_client: MagicMock,
+        mock_logging_exception: MagicMock,
     ) -> None:
         # arrange
         client = AsyncMock()
