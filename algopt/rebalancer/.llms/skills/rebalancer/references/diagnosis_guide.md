@@ -41,7 +41,7 @@ Each node type and the computation it performs:
 | Node Type | Computation | Notes |
 |-----------|-------------|-------|
 | `LinearSum` | `value = constant + Σ(coefficient_i × child_i)` | Additive composition. Most common root type for goals. |
-| `AnyPositive` | Returns 1 if ANY child > feasibilityTolerance, else 0 | Logical conjunction for constraints. |
+| `AnyPositive` | Returns 1 if ANY child is strictly greater than zero, else 0 | Logical conjunction for constraints. |
 | `Max` | Maximum of children's values | Worst-case selection. |
 | `BinaryOperation` | Two-child arithmetic (addition, subtraction) | Used for `utilization - limit` style computations. |
 | `Power` / `Square` | Raises a child to an exponent | Non-linear penalty — larger deviations penalized more heavily. |
