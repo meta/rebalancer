@@ -124,12 +124,36 @@ TEST_F(AvoidAssignmentsSpecBuilderTest, FilterBlocksAvoidedAssignments) {
   specBuilder.populateInvalidMoveFilter(
       filter, expressionBuilder().getUpdatedInitialAssignment());
 
+  // task0 and task1 start on host0, so only task2 is blocked from it.
   const std::set<InvalidPair> expectedInvalidPairs{
-      {objectId("task0"), containerId("host0")},
       {objectId("task0"), containerId("host1")},
-      {objectId("task1"), containerId("host0")},
       {objectId("task1"), containerId("host2")},
       {objectId("task2"), containerId("host0")}};
+  EXPECT_EQ(expectedInvalidPairs, collectInvalidPairs(filter));
+}
+
+TEST_F(
+    AvoidAssignmentsSpecBuilderTest,
+    FilterUsesUpdatedInitialAssignmentForInitialViolations) {
+  interface::AvoidAssignmentsSpec avoidAssignmentsSpec;
+  avoidAssignmentsSpec.scope() = "host";
+  avoidAssignmentsSpec.assignments() = {
+      interface::makeAvoidAssignment("task0", {"host1"}),
+      interface::makeAvoidAssignment("task3", {"host1", "host2"})};
+
+  const AvoidAssignmentsSpecBuilder specBuilder(
+      buildUniverse(), avoidAssignmentsSpec);
+  InvalidMoveFilter filter(
+      universe_->getObjects().getObjectIds().size(),
+      universe_->getContainers().getContainerIds().size());
+  specBuilder.populateInvalidMoveFilter(
+      filter,
+      Assignment(deltaFromInitial({{"task0", "host1"}, {"task3", "host0"}})));
+
+  // task0 starts on host1 in the updated assignment; task3 now starts on host0.
+  const std::set<InvalidPair> expectedInvalidPairs{
+      {objectId("task3"), containerId("host1")},
+      {objectId("task3"), containerId("host2")}};
   EXPECT_EQ(expectedInvalidPairs, collectInvalidPairs(filter));
 }
 

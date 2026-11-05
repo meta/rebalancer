@@ -71,16 +71,22 @@ std::string AvoidAssignmentsSpecBuilder::description() const {
 
 void AvoidAssignmentsSpecBuilder::populateInvalidMoveFilter(
     InvalidMoveFilter& invalidMoveFilter,
-    const Assignment& /*updatedInitialAssignment*/) const {
+    const Assignment& updatedInitialAssignment) const {
   const auto scopeId = universe_->getScopeId(*spec_.scope());
   const auto& scope = universe_->getScope(scopeId);
   Map<ScopeItemId, std::vector<ObjectId>> scopeItemToInvalidObjects;
   for (const auto& assignment : *spec_.assignments()) {
     const auto objectId = universe_->getObjectId(*assignment.object());
+    // An avoided object may stay in, and move within, the scope item it
+    // starts in.
+    const auto initialScopeItemId =
+        scope.getScopeItemId(updatedInitialAssignment.getContainer(objectId));
     for (const auto& scopeItemName : *assignment.scopeItems()) {
       const auto scopeItemId =
           universe_->getScopeItemId(scopeId, scopeItemName);
-      scopeItemToInvalidObjects[scopeItemId].push_back(objectId);
+      if (scopeItemId != initialScopeItemId) {
+        scopeItemToInvalidObjects[scopeItemId].push_back(objectId);
+      }
     }
   }
   for (const auto& [scopeItemId, invalidObjects] : scopeItemToInvalidObjects) {
