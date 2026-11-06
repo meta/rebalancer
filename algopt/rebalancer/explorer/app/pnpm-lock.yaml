@@ -146,9 +146,6 @@ importers:
       playwright:
         specifier: ^1.59.1
         version: 1.59.1
-      prettier:
-        specifier: ^3.6.2
-        version: 3.8.1
       prettier-plugin-tailwindcss:
         specifier: ^0.6.14
         version: 0.6.14(prettier@3.8.1)
