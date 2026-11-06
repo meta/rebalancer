@@ -58,25 +58,33 @@ CO_TEST_F(AvoidAssignmentsSpecBuilderTest, Constraint) {
   EXPECT_EQ(expectedSpecInfo, specBuilder.getSpecInfo());
 
   auto constraint = co_await specBuilder.constraints(expressionBuilder());
-  // Constraints are per scope-item (host); order depends on hash map iteration.
-  // Identify which constraint corresponds to which host by behavior.
+  // host0 is initially broken, so it gets an extra constraint that forbids new
+  // avoided objects from moving in. Constraint order depends on hash map
+  // iteration, so identify each constraint by its behavior.
+  EXPECT_EQ(4, constraint.size());
   std::optional<size_t> host0Ctr;
+  std::optional<size_t> host0NewCtr;
   std::optional<size_t> host1Ctr;
   std::optional<size_t> host2Ctr;
   for (const auto i : folly::irange(constraint.size())) {
-    const double initVal = evaluate(constraint.at(i), deltaFromInitial({}));
-    if (std::abs(initVal - 2) < 1e-8) {
+    const auto valueAfter =
+        [&](const entities::Map<std::string, std::string>& moves) {
+          return evaluate(constraint.at(i), deltaFromInitial(moves));
+        };
+    if (std::abs(valueAfter({}) - 2) < 1e-8) {
       host0Ctr = i;
     } else if (
-        std::abs(
-            evaluate(constraint.at(i), deltaFromInitial({{"task0", "host1"}})) -
-            1) < 1e-8) {
+        std::abs(valueAfter({{"task0", "host2"}, {"task2", "host0"}}) - 1) <
+        1e-8) {
+      host0NewCtr = i;
+    } else if (std::abs(valueAfter({{"task0", "host1"}}) - 1) < 1e-8) {
       host1Ctr = i;
     } else {
       host2Ctr = i;
     }
   }
   EXPECT_TRUE(host0Ctr.has_value());
+  EXPECT_TRUE(host0NewCtr.has_value());
   EXPECT_TRUE(host1Ctr.has_value());
   EXPECT_TRUE(host2Ctr.has_value());
 
@@ -89,6 +97,30 @@ CO_TEST_F(AvoidAssignmentsSpecBuilderTest, Constraint) {
       evaluate(
           constraint.at(*host0Ctr),
           deltaFromInitial({{"task0", "host2"}, {"task1", "host1"}})),
+      1e-8);
+  // value stays 2 when task2 replaces task0 on host0
+  EXPECT_NEAR(
+      2,
+      evaluate(
+          constraint.at(*host0Ctr),
+          deltaFromInitial({{"task0", "host2"}, {"task2", "host0"}})),
+      1e-8);
+
+  // value will be 0 as no avoided object moved into host0
+  EXPECT_NEAR(
+      0, evaluate(constraint.at(*host0NewCtr), deltaFromInitial({})), 1e-8);
+  EXPECT_NEAR(
+      0,
+      evaluate(
+          constraint.at(*host0NewCtr),
+          deltaFromInitial({{"task0", "host2"}, {"task1", "host1"}})),
+      1e-8);
+  // value will be 1 as task2 moved into host0, even though task0 moved out
+  EXPECT_NEAR(
+      1,
+      evaluate(
+          constraint.at(*host0NewCtr),
+          deltaFromInitial({{"task0", "host2"}, {"task2", "host0"}})),
       1e-8);
 
   // value will be 0 as host1 doesn't have task0
@@ -104,6 +136,29 @@ CO_TEST_F(AvoidAssignmentsSpecBuilderTest, Constraint) {
   // value will be 0 as host2 doesn't have task1
   EXPECT_NEAR(
       0, evaluate(constraint.at(*host2Ctr), deltaFromInitial({})), 1e-8);
+  // value will be 1 as task1 moved to host2
+  EXPECT_NEAR(
+      1,
+      evaluate(
+          constraint.at(*host2Ctr), deltaFromInitial({{"task1", "host2"}})),
+      1e-8);
+}
+
+CO_TEST_F(AvoidAssignmentsSpecBuilderTest, NoExtraConstraintIfNotBroken) {
+  interface::AvoidAssignmentsSpec avoidAssignmentsSpec;
+  avoidAssignmentsSpec.scope() = "host";
+  avoidAssignmentsSpec.assignments() = {
+      interface::makeAvoidAssignment("task0", {"host1", "host2"}),
+      interface::makeAvoidAssignment("task3", {"host0"})};
+
+  const AvoidAssignmentsSpecBuilder specBuilder(
+      buildUniverse(), avoidAssignmentsSpec);
+
+  auto constraint = co_await specBuilder.constraints(expressionBuilder());
+  EXPECT_EQ(3, constraint.size());
+  for (const auto& c : constraint) {
+    EXPECT_NEAR(0, evaluate(c, deltaFromInitial({})), 1e-8);
+  }
 }
 
 TEST_F(AvoidAssignmentsSpecBuilderTest, FilterBlocksAvoidedAssignments) {

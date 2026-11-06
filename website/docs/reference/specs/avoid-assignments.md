@@ -69,6 +69,14 @@ initially broken, and the general [constraint policy](../constraint-policy) take
 over: under the default policy Rebalancer moves the offending objects off as best
 it can without breaking constraints that held initially.
 
+An initially broken scope item never accepts a new forbidden object, even when
+another forbidden object leaves at the same time. Swapping one forbidden object
+for another would leave the number of violations unchanged, but it is not
+allowed: on such a scope item, Rebalancer adds a second constraint, counting
+only forbidden objects that were not there initially, and that constraint holds
+initially, so the default policy keeps it hard. Forbidden objects that start on
+the scope item may still stay or move off.
+
 ## Avoiding many pairs
 
 Listing every pair gets unwieldy when a large share of objects must be kept off a

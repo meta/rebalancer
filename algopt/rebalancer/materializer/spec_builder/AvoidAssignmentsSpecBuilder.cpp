@@ -39,8 +39,15 @@ AvoidAssignmentsSpecBuilder::constraints(
   const auto numObjects = universe_->getNumObjects();
   const auto numAvoidAssignments = spec_.assignments()->size();
   std::vector<ConstraintInfo> result;
+  const auto& scope = universe_->getScope(scopeId);
+  const auto& initialAssignment =
+      expressionBuilder.getUpdatedInitialAssignment();
   Map<ScopeItemId, ObjectIdToDoubleMap> scopeItemToObjectPenalties;
+  Set<ScopeItemId> initiallyBrokenScopeItems;
   for (auto& assignment : *spec_.assignments()) {
+    const auto objectId = universe_->getObjectId(*assignment.object());
+    const auto initialScopeItemId =
+        scope.getScopeItemId(initialAssignment.getContainer(objectId));
     for (auto& scopeItemName : *assignment.scopeItems()) {
       auto scopeItemId = universe_->getScopeItemId(scopeId, scopeItemName);
       auto [it, _] = scopeItemToObjectPenalties.try_emplace(
@@ -48,7 +55,10 @@ AvoidAssignmentsSpecBuilder::constraints(
           numObjects,
           /*defaultValue=*/0.0,
           /*expectedNonDefaultSize=*/numAvoidAssignments);
-      it->second.emplace(universe_->getObjectId(*assignment.object()), 1.0);
+      it->second.emplace(objectId, 1.0);
+      if (initialScopeItemId == scopeItemId) {
+        initiallyBrokenScopeItems.insert(scopeItemId);
+      }
     }
   }
 
@@ -57,6 +67,14 @@ AvoidAssignmentsSpecBuilder::constraints(
     result.emplace_back(
         co_await expressionBuilder.getAbsoluteUtil(
             UtilMetric::AFTER, splDim, scopeId, scopeItemId));
+    // Keeps forbidden objects that did not start on this scope item from
+    // moving in. It holds initially, so it stays hard even though the AFTER
+    // constraint above is broken.
+    if (initiallyBrokenScopeItems.contains(scopeItemId)) {
+      result.emplace_back(
+          co_await expressionBuilder.getAbsoluteUtil(
+              UtilMetric::NEW, splDim, scopeId, scopeItemId));
+    }
   }
 
   co_return result;
