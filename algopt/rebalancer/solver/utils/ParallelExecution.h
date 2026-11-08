@@ -298,10 +298,10 @@ auto executeParallelBatch(
     return initialize();
   }
 
-  if (FOLLY_UNLIKELY(config.batchSize == 0)) {
+  if (config.batchSize == 0) [[unlikely]] {
     throw std::invalid_argument("batchSize must be greater than 0");
   }
-  if (FOLLY_UNLIKELY(config.maxConcurrency && *config.maxConcurrency == 0)) {
+  if (config.maxConcurrency && *config.maxConcurrency == 0) [[unlikely]] {
     throw std::invalid_argument("maxConcurrency must be greater than 0");
   }
 
