@@ -21,6 +21,7 @@
 #include <fmt/core.h>
 #include <folly/container/irange.h>
 #include <folly/logging/Init.h>
+#include <folly/String.h>
 #include <gtest/gtest.h>
 
 #include <map>
