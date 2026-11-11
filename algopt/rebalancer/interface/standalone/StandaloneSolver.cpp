@@ -174,6 +174,12 @@ DEFINE_double(
     "Override relative precision tolerance. If >= 0, sets universe.precisionTolerances.relative to this value.");
 
 DEFINE_string(
+    solver_problem_file,
+    "",
+    "Override OptimalSolverSpec.solverOutputFiles.solverProblemFile, e.g. "
+    "/tmp/model.mps, to write the MIP model to a file.");
+
+DEFINE_string(
     learned_model_path,
     "",
     "If set, enable the learned move-legality heuristic (rebalancer-net) using "
@@ -325,6 +331,16 @@ static void possiblyModifyOptimalSolverSpec(
   }
   if (FLAGS_solve_time >= 0) {
     optimalSolverSpec.solveTime() = FLAGS_solve_time;
+  }
+  const auto& logFile = *optimalSolverSpec.xpressLogFile();
+  const auto logDir = std::filesystem::path(logFile).parent_path();
+  if (!logDir.empty() && !std::filesystem::is_directory(logDir)) {
+    XLOGF(WARN, "Ignoring saved MIP log file with missing dir: {}", logFile);
+    optimalSolverSpec.xpressLogFile() = "";
+  }
+  if (!FLAGS_solver_problem_file.empty()) {
+    optimalSolverSpec.solverOutputFiles()->solverProblemFile() =
+        FLAGS_solver_problem_file;
   }
   if (FLAGS_move_limit >= 0) {
     throw std::runtime_error(
