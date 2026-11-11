@@ -190,6 +190,8 @@ class ProblemSolverBinding {
 
   void useParallelizedNewMaterializer();
 
+  void enableParallelBoundsComputation(bool enable);
+
   void shouldUseDynamicObjectOrdering(bool useDynamicObjectOrdering);
 
   void validateAppliedMoves(bool enable);

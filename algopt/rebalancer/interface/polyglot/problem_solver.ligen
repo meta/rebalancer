@@ -237,6 +237,9 @@ unique class ProblemSolverBinding {
   @output_name(py="useParallelizedNewMaterializer")
   mut void useParallelizedNewMaterializer() throws;
 
+  @output_name(py="enableParallelBoundsComputation")
+  mut void enableParallelBoundsComputation(bool enable) throws;
+
   @output_name(py="shouldUseDynamicObjectOrdering")
   mut void shouldUseDynamicObjectOrdering(bool useDynamicObjectOrdering) throws;
 

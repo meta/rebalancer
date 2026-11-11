@@ -41,6 +41,37 @@ TEST_P(ProblemSolverTest, Basic) {
   auto solver =
       initializeTestProblemSolver({.executorThreadCount = GetParam()});
   runBasicTest(*solver);
+  EXPECT_FALSE(
+      *solver->getBundle().problem()->enableParallelBoundsComputation());
+}
+
+TEST_P(ProblemSolverTest, ParallelBoundsWithoutParallelMaterializer) {
+  auto solver = initializeTestProblemSolver(
+      {.useParallelMaterializer = false, .executorThreadCount = GetParam()});
+  solver->disableLogging();
+  ManifoldBackupParams backup;
+  backup.uploadPolicy() = ManifoldUploadPolicy::NEVER;
+  solver->setManifoldBackupParams(backup);
+  solver->enableParallelBoundsComputation(true);
+
+  runBasicTest(*solver);
+  EXPECT_TRUE(
+      *solver->getBundle().problem()->enableParallelBoundsComputation());
+}
+
+TEST_P(ProblemSolverTest, ParallelBoundsCanBeDisabled) {
+  auto solver =
+      initializeTestProblemSolver({.executorThreadCount = GetParam()});
+  solver->disableLogging();
+  ManifoldBackupParams backup;
+  backup.uploadPolicy() = ManifoldUploadPolicy::NEVER;
+  solver->setManifoldBackupParams(backup);
+  solver->enableParallelBoundsComputation(true);
+  solver->enableParallelBoundsComputation(false);
+
+  runBasicTest(*solver);
+  EXPECT_FALSE(
+      *solver->getBundle().problem()->enableParallelBoundsComputation());
 }
 
 TEST_P(ProblemSolverTest, BottomUp) {

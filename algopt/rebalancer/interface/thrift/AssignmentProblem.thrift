@@ -60,6 +60,7 @@ struct AssignmentProblem {
   26: bool validateAppliedMoves = false;
 
   27: Types.RolloutConfig rolloutConfig;
+  28: bool enableParallelBoundsComputation = false;
 
   // this field is used internally to add specific labels to the rebalancer_run_info scuba table; mainly used when running experiments to test changes
   1024: optional string scubaLoggingLabel;

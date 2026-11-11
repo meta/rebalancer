@@ -491,6 +491,9 @@ class ProblemSolver {
   // Default is the non-parallelized path.
   void useParallelizedNewMaterializer();
 
+  // Opt into parallel bounds initialization independently of materialization.
+  void enableParallelBoundsComputation(bool enable);
+
   // if set to true, this uses the new way of iterating over objects in
   // rebalancer that is faster when using local search and avoids potentially
   // exploring the same moves several times; this is no-op for optimal solver
@@ -610,6 +613,7 @@ class ProblemSolver {
 
   // default to using the non-parallelized version
   bool useParallelizedNewMaterializer_ = false;
+  bool enableParallelBoundsComputation_ = false;
 
   bool useDynamicObjectOrdering_ = true;
 

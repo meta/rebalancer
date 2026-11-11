@@ -360,6 +360,11 @@ class ProblemSolver:
         self._ps.useParallelizedNewMaterializer()
         return self
 
+    def enableParallelBoundsComputation(self, enable: bool) -> ProblemSolver:
+        """Enable or disable parallel bounds initialization for this problem."""
+        self._ps.enableParallelBoundsComputation(enable)
+        return self
+
     def shouldUseDynamicObjectOrdering(
         self, useDynamicObjectOrdering: bool
     ) -> ProblemSolver:

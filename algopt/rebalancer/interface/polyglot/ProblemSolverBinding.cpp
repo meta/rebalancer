@@ -369,6 +369,10 @@ void ProblemSolverBinding::useParallelizedNewMaterializer() {
   solver_->useParallelizedNewMaterializer();
 }
 
+void ProblemSolverBinding::enableParallelBoundsComputation(bool enable) {
+  solver_->enableParallelBoundsComputation(enable);
+}
+
 void ProblemSolverBinding::publishMetrics() {
   solver_->publishMetrics();
 }

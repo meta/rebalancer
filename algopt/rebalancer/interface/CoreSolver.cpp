@@ -234,6 +234,11 @@ AssignmentSolution CoreSolver::solve(
             .value = (double)enableParallelizedNewMaterializer});
     logger->log(
         GenericInfo{
+            .key = "using_parallel_bounds_computation",
+            .value =
+                *problemSpec.enableParallelBoundsComputation() ? 1.0 : 0.0});
+    logger->log(
+        GenericInfo{
             .key = "using_dynamic_object_ordering",
             .value = *problemSpec.useDynamicObjectOrdering() ? 1.0 : 0.0});
   }
@@ -427,6 +432,8 @@ ProblemConfigs CoreSolver::makeProblemConfig(
   problemConfig.runId.run_id = *problemSpec.runId();
   problemConfig.useDynamicObjectOrdering =
       *problemSpec.useDynamicObjectOrdering();
+  problemConfig.enableParallelizedBoundsComputing =
+      *problemSpec.enableParallelBoundsComputation();
   problemConfig.useIncrementalPriorityQueueV2 =
       *problemSpec.rolloutConfig()->useIncrementalPriorityQueueV2();
   problemConfig.validateAppliedMoves = *problemSpec.validateAppliedMoves();

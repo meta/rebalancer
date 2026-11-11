@@ -625,6 +625,7 @@ AssignmentSolution ProblemSolver::solve() {
   problem->descendingHotnessContainersOverride() =
       descendingHotnessContainersOverride;
   problem->useDynamicObjectOrdering() = useDynamicObjectOrdering_;
+  problem->enableParallelBoundsComputation() = enableParallelBoundsComputation_;
   problem->validateAppliedMoves() = validateAppliedMoves_;
   problem->rolloutConfig() = rolloutConfig_;
   if (decompositionScopeName_) {
@@ -763,6 +764,11 @@ void ProblemSolver::persistToManifoldImpl(
 void ProblemSolver::useParallelizedNewMaterializer() {
   REBALANCER_PROBLEM_SETUP_TIMER_SCOPE();
   useParallelizedNewMaterializer_ = true;
+}
+
+void ProblemSolver::enableParallelBoundsComputation(bool enable) {
+  REBALANCER_PROBLEM_SETUP_TIMER_SCOPE();
+  enableParallelBoundsComputation_ = enable;
 }
 
 void ProblemSolver::shouldUseDynamicObjectOrdering(

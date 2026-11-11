@@ -14,8 +14,6 @@
 # limitations under the License.
 
 
-# pyre-strict
-
 from collections import Counter
 
 from algopt.rebalancer.interface.py_client.ProblemSolver import ProblemSolver
@@ -50,6 +48,12 @@ from rebalancer.interface.thrift.v2.SolverSpecs.thrift_types import (
 # This test is a Python translation of the C++ test at
 # //algopt/rebalancer/interface/tests/CapacityTest.cpp
 class TestCapacitySpec(BaseFacebookTestCase):
+    def test_parallel_bounds_configuration_is_chainable(self) -> None:
+        solver = ProblemSolver(service_name="rebalancer", service_scope="tests")
+
+        self.assertIs(solver.enableParallelBoundsComputation(True), solver)
+        self.assertIs(solver.enableParallelBoundsComputation(False), solver)
+
     def test_initially_broken_capacity_constraint(self) -> None:
         # In this example there are 2 hosts and 4 tasks. Each host has capacity for
         # 2 tasks. host0 initially breaks the constraint, as there are 3 tasks in
