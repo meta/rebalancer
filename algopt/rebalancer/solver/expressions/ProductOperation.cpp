@@ -116,10 +116,12 @@ algopt::lp::Expression ProductOperation::lp(
     auto& x = evaluator.lp(lhs, minimizing, configs);
     auto& y = evaluator.lp(rhs, minimizing, configs);
     auto z = lp_bool_var(evaluator);
-    REBALANCER_NEWCTR(z <= x);
-    REBALANCER_NEWCTR(z <= y);
-    REBALANCER_NEWCTR(z >= 0);
-    REBALANCER_NEWCTR(z >= x + y - 1);
+    LpConstraintBatch batch(evaluator, 4);
+    batch.add(REBALANCER_CTR_REQUEST(z <= x));
+    batch.add(REBALANCER_CTR_REQUEST(z <= y));
+    batch.add(REBALANCER_CTR_REQUEST(z >= 0));
+    batch.add(REBALANCER_CTR_REQUEST(z >= x + y - 1));
+    batch.flush();
     return z;
   }
 
@@ -134,10 +136,12 @@ algopt::lp::Expression ProductOperation::lp(
   auto& y = evaluator.lp(rhs, /*minimizing=*/false, configs);
 
   auto z = lp_cont_var(evaluator);
-  REBALANCER_NEWCTR(-c * x <= z);
-  REBALANCER_NEWCTR(y - c * (1 - x) <= z);
-  REBALANCER_NEWCTR(z <= c * x);
-  REBALANCER_NEWCTR(z <= y + c * (1 - x));
+  LpConstraintBatch batch(evaluator, 4);
+  batch.add(REBALANCER_CTR_REQUEST(-c * x <= z));
+  batch.add(REBALANCER_CTR_REQUEST(y - c * (1 - x) <= z));
+  batch.add(REBALANCER_CTR_REQUEST(z <= c * x));
+  batch.add(REBALANCER_CTR_REQUEST(z <= y + c * (1 - x)));
+  batch.flush();
   return z;
 }
 

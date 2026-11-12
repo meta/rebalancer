@@ -239,31 +239,53 @@ void OptimalSolver::addObjectInContainerConstraints(
     LpContext& context) {
   XLOG(DBG1) << "Setting up basic object in container constraints";
   // object assigned to 1 container
-  folly::coro::blockingWait(
-      CoroUtils::runEachFunc(
-          context.dynamicEquivSets().begin(),
-          context.dynamicEquivSets().end(),
-          [&](auto it) {
-            auto equivSet = *it;
-            auto expr = p.lp_store.expression();
-            auto totalSize = p.getEquivalenceSets().getSet(equivSet).size();
-            for (auto cont : p.containers) {
-              if (auto fixedValue = p.get_maybe_fixed_assignment_value(
-                      context, equivSet, cont)) {
-                totalSize -= fixedValue.value();
-              } else {
-                expr += p.lp_assignment_var(context, equivSet, cont);
-              }
-            }
+  const auto buildRequest = [&](auto it) {
+    auto equivSet = *it;
+    auto expr = p.lp_store.expression();
+    auto totalSize = p.getEquivalenceSets().getSet(equivSet).size();
+    for (auto cont : p.containers) {
+      if (auto fixedValue =
+              p.get_maybe_fixed_assignment_value(context, equivSet, cont)) {
+        totalSize -= fixedValue.value();
+      } else {
+        expr += p.lp_assignment_var(context, equivSet, cont);
+      }
+    }
+    for (auto container : context.dynamicContainers()) {
+      p.assignment_var(equivSet, container).setLB(0);
+      p.assignment_var(equivSet, container).setUB(totalSize);
+    }
+    return std::make_pair(expr == totalSize, std::string{"basic"});
+  };
+  if (p.configs.enableParallelizedLpBuilding ||
+      !p.lp_store.getLpProblem().supportsConstraintBatching()) {
+    folly::coro::blockingWait(
+        CoroUtils::runEachFunc(
+            context.dynamicEquivSets().begin(),
+            context.dynamicEquivSets().end(),
+            [&](auto it) {
+              const auto request = buildRequest(it);
+              p.lp_store.addConstraint(request.first, request.second);
+            },
+            p.getExecutorForLpBuilding()));
+    return;
+  }
 
-            for (auto container : context.dynamicContainers()) {
-              p.assignment_var(equivSet, container).setLB(0);
-              p.assignment_var(equivSet, container).setUB(totalSize);
-            }
-            p.lp_store.addConstraint(expr == totalSize, "basic");
-            return;
-          },
-          p.getExecutorForLpBuilding()));
+  algopt::lp::Problem::ConstraintRequests requests;
+  constexpr size_t kConstraintBatchSize = 128;
+  requests.reserve(kConstraintBatchSize);
+  for (auto it = context.dynamicEquivSets().begin();
+       it != context.dynamicEquivSets().end();
+       ++it) {
+    requests.push_back(buildRequest(it));
+    if (requests.size() == kConstraintBatchSize) {
+      p.lp_store.addConstraints(requests);
+      requests.clear();
+    }
+  }
+  if (!requests.empty()) {
+    p.lp_store.addConstraints(requests);
+  }
 }
 
 static void collectConstraintExprs(

@@ -607,6 +607,8 @@ algopt::lp::Expression ObjectPartitionLookup<Policy>::lp(
     }
   };
 
+  LpConstraintBatch batch(evaluator);
+
   for (auto groupId : groupIds) {
     double sum_ub = 1.0;
 
@@ -614,7 +616,7 @@ algopt::lp::Expression ObjectPartitionLookup<Policy>::lp(
     // max(0, sum - limit) if bound is MAX
     // max(0, limit - sum) if bound is MIN
     auto penalty = lp_cont_var(evaluator, "penalty");
-    REBALANCER_NEWCTR(penalty >= 0);
+    batch.add(REBALANCER_CTR_REQUEST(penalty >= 0));
 
     auto sum = evaluator.makeLpExpression(0);
     double rawSum = 0;
@@ -690,17 +692,17 @@ algopt::lp::Expression ObjectPartitionLookup<Policy>::lp(
       auto w = lp_bool_var(evaluator);
       limitNumViolators += w;
       // set w=1 if violation is to be ignored
-      REBALANCER_NEWCTR(penalty + sum_ub * w >= sum);
+      batch.add(REBALANCER_CTR_REQUEST(penalty + sum_ub * w >= sum));
     } else {
-      REBALANCER_NEWCTR(penalty >= sum);
+      batch.add(REBALANCER_CTR_REQUEST(penalty >= sum));
     }
 
     if (!minimizing) {
       auto z = lp_bool_var(evaluator);
       // z == 0 implies penalty <= 0
-      REBALANCER_NEWCTR(penalty <= sum_ub * z);
+      batch.add(REBALANCER_CTR_REQUEST(penalty <= sum_ub * z));
       // z == 1 implies penalty = sum
-      REBALANCER_NEWCTR(penalty <= sum + sum_ub * (1 - z));
+      batch.add(REBALANCER_CTR_REQUEST(penalty <= sum + sum_ub * (1 - z)));
     }
 
     switch (penaltyTransform_) {
@@ -708,6 +710,7 @@ algopt::lp::Expression ObjectPartitionLookup<Policy>::lp(
         expr += penalty;
         break;
       case ObjectPartitionLookupPenaltyTransform::STEP:
+        batch.flush();
         expr += Step::encodeLp(
             penalty,
             Bounds{.lower_bound = 0, .upper_bound = sum_ub},
@@ -721,6 +724,7 @@ algopt::lp::Expression ObjectPartitionLookup<Policy>::lp(
             "SQUARE penalty transform is not supported in LP");
     }
   }
+  batch.flush();
   if (addGroupConstraint) {
     newCtr(
         evaluator,

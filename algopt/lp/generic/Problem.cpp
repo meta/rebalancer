@@ -17,7 +17,7 @@
 #include "algopt/lp/generic/thrift/gen-cpp2/problem_types.h"
 #include "algopt/rebalancer/algopt_common/thrift/ThriftUtils.h"
 
-#include "fmt/core.h"
+#include "fmt/format.h"
 #include <folly/container/irange.h>
 #include <folly/logging/xlog.h>
 #include <folly/MapUtil.h>
@@ -87,6 +87,20 @@ std::optional<double> computeScaledMaxCoefRatio(
 }
 
 ProblemImpl::~ProblemImpl() = default;
+
+std::vector<std::shared_ptr<ConstraintImpl>> ProblemImpl::newConstraints(
+    const ConstraintRequests& requests) {
+  std::vector<std::shared_ptr<ConstraintImpl>> constraints;
+  constraints.reserve(requests.size());
+  for (const auto& [relation, name] : requests) {
+    constraints.push_back(newConstraint(relation, name));
+  }
+  return constraints;
+}
+
+bool ProblemImpl::supportsConstraintBatching() const {
+  return false;
+}
 
 void ProblemImpl::setMaxSolveTime(double solveTime) {
   maxSolveTime_ = solveTime;
@@ -415,6 +429,57 @@ Constraint Problem::newConstraint(
     throw std::runtime_error("unsupported constant relation type");
   }
   return Constraint(problem_->newConstraint(relation.get(), name));
+}
+
+std::vector<Constraint> Problem::newConstraints(
+    const ConstraintRequests& requests) {
+  ProblemImpl::ConstraintRequests normalized;
+  normalized.reserve(requests.size());
+  for (const auto& [relation, name] : requests) {
+    auto implementation = relation.get();
+    if (relation.isConstant()) {
+      const auto expression =
+          problem_->makeExpression(relation.getConstantValue());
+      switch (relation.getConstantType()) {
+        case Relation::ConstantType::EQ_ZERO:
+          implementation = expression->makeEqualZeroRelation();
+          break;
+        case Relation::ConstantType::GE_ZERO:
+          implementation = expression->makeGreaterEqualZeroRelation();
+          break;
+        case Relation::ConstantType::LE_ZERO:
+          implementation = expression->makeLessEqualZeroRelation();
+          break;
+        default:
+          throw std::runtime_error("unsupported constant relation type");
+      }
+    }
+    normalized.emplace_back(std::move(implementation), name);
+  }
+  auto implementations = problem_->newConstraints(normalized);
+  if (implementations.size() != requests.size()) {
+    throw std::runtime_error(
+        fmt::format(
+            "backend returned {} constraints for {} requests",
+            implementations.size(),
+            requests.size()));
+  }
+  std::vector<Constraint> constraints;
+  constraints.reserve(implementations.size());
+  for (const auto index : folly::irange(implementations.size())) {
+    auto& implementation = implementations[index];
+    if (!implementation) {
+      throw std::runtime_error(
+          fmt::format(
+              "backend returned a null constraint at request index {}", index));
+    }
+    constraints.emplace_back(std::move(implementation));
+  }
+  return constraints;
+}
+
+bool Problem::supportsConstraintBatching() const {
+  return problem_->supportsConstraintBatching();
 }
 
 void Problem::deleteConstraint(Constraint& constraint) {

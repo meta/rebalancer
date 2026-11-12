@@ -636,8 +636,7 @@ bool Expression::is_integer(Context& context) {
       id, [&]() { return inner_is_integer(context); });
 }
 
-void Expression::newCtr(
-    const LpEvaluator& evaluator,
+std::pair<algopt::lp::Relation, std::string> Expression::ctrRequest(
     const std::string& suffix,
     const algopt::lp::Relation& relation,
     const std::vector<int64_t>& relatedExpressionIds) const {
@@ -650,8 +649,16 @@ void Expression::newCtr(
   if (!suffix.empty()) {
     name << "_" << suffix;
   }
-  auto nameStr = name.str();
-  evaluator.addLpConstraint(relation, nameStr);
+  return {relation, name.str()};
+}
+
+void Expression::newCtr(
+    const LpEvaluator& evaluator,
+    const std::string& suffix,
+    const algopt::lp::Relation& relation,
+    const std::vector<int64_t>& relatedExpressionIds) const {
+  const auto request = ctrRequest(suffix, relation, relatedExpressionIds);
+  evaluator.addLpConstraint(request.first, request.second);
 }
 
 void Expression::ensureOnlyOneChildExists() const {

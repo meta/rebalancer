@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "algopt/lp/generic/Relation.h"
 #include "algopt/lp/generic/Variable.h"
 #include "algopt/rebalancer/solver/if/gen-cpp2/packer_types.h"
 #include "algopt/rebalancer/solver/iterators/Abstract.h"
@@ -29,6 +30,9 @@
 
 #include <memory>
 #include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace facebook::rebalancer {
 
@@ -245,6 +249,11 @@ class Expression {
   computeUniqueAffectedContainersInSubgraph();
 
  public:
+  std::pair<algopt::lp::Relation, std::string> ctrRequest(
+      const std::string& suffix,
+      const algopt::lp::Relation& relation,
+      const std::vector<int64_t>& relatedExpressionIds = {}) const;
+
   void newCtr(
       const LpEvaluator& evaluator,
       const std::string& extra,
@@ -405,6 +414,9 @@ class Expression {
 
   PackerSet<std::shared_ptr<Expression>> children_;
 };
+
+#define REBALANCER_CTR_REQUEST(x) \
+  ctrRequest(folly::to<std::string>(getType(), "_", __LINE__), x)
 
 #define REBALANCER_NEWCTR(x) \
   newCtr(evaluator, folly::to<std::string>(getType(), "_", __LINE__), x)

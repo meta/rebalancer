@@ -406,12 +406,14 @@ algopt::lp::Expression Max::lp(
     if (bigM >= LARGEST_VALUE) {
       throw std::runtime_error("Huge bigM calculated, model won't be correct.");
     }
+    LpConstraintBatch batch(evaluator, child_exprs.size() + 1);
     for (auto& it : child_exprs) {
       auto z = lp_bool_var(evaluator);
       z_sum += z;
-      REBALANCER_NEWCTR(it + bigM * (1 - z) >= max_var);
+      batch.add(REBALANCER_CTR_REQUEST(it + bigM * (1 - z) >= max_var));
     }
-    REBALANCER_NEWCTR(z_sum == 1);
+    batch.add(REBALANCER_CTR_REQUEST(z_sum == 1));
+    batch.flush();
   }
   return max_var;
 }

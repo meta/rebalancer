@@ -168,6 +168,8 @@ class XpressV2Relation : public RelationImpl {
   xpress::objects::InequalityDefinition makeDefinition() const;
 
  private:
+  friend class XpressProblemV2;
+
   std::optional<xpress::objects::LinExpression> linear_;
   std::optional<xpress::objects::Expression> general_;
   Sense sense_;

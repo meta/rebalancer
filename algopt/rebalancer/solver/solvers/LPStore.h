@@ -15,12 +15,15 @@
 #pragma once
 
 #include "algopt/lp/detail/generic/impl/GenericVariableImpl.h"
+#include "algopt/lp/generic/Problem.h"
 #include "algopt/lp/generic/Variable.h"
 #include "algopt/rebalancer/solver/utils/Context.h"
 #include "algopt/rebalancer/solver/utils/Util.h"
 #include "algopt/rebalancer/treeprof/ExecutorWrapper.h"
 #include <algopt/rebalancer/interface/thrift/gen-cpp2/SolverSpecs_types.h>
 
+#include <atomic>
+#include <cstddef>
 #include <optional>
 
 namespace facebook::rebalancer {
@@ -49,11 +52,15 @@ class LPStore {
 
   algopt::lp::Problem& getLpProblem() const;
 
+  // Submitted request attempts, including failed calls; not a native row count.
+  // Batch failures may leave partial native state and require model discard.
   int getConstraintCount() const;
 
   algopt::lp::Constraint addConstraint(
       const algopt::lp::Relation& expr,
       const std::string& name = "constraint") const;
+  std::vector<algopt::lp::Constraint> addConstraints(
+      const algopt::lp::Problem::ConstraintRequests& requests) const;
 
   void setObjective(
       const std::vector<algopt::lp::Expression>& objectiveTuple) const;
@@ -92,6 +99,9 @@ class LPStore {
   void setMultiObjConfig(algopt::lp::MultiObjConfig multiObjConfig) const;
 
  private:
+  friend struct LPStoreConstraintCountTestAccess;
+  static int reserveConstraintAttempts(std::atomic<int>& counter, size_t count);
+
   // The following non-mutable data structures can only be set in reset() and
   // after that it is read-only
   PackerMap<

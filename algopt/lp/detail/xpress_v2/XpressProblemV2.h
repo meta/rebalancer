@@ -93,6 +93,11 @@ class XpressProblemV2 : public ProblemImpl {
   std::shared_ptr<ConstraintImpl> newConstraint(
       std::shared_ptr<const RelationImpl> relation,
       const std::string& name) override;
+  std::vector<std::shared_ptr<ConstraintImpl>> newConstraints(
+      const ConstraintRequests& requests) override;
+  bool supportsConstraintBatching() const override {
+    return true;
+  }
   void deleteConstraint(std::shared_ptr<ConstraintImpl> constraint) override;
 
   void addObjective(std::shared_ptr<const ExpressionImpl> expression) override;
@@ -162,6 +167,10 @@ class XpressProblemV2 : public ProblemImpl {
   static std::optional<std::string> uniqueName(
       const std::string& name,
       folly::F14FastSet<std::string>& usedNames);
+
+  void applyConstraintName(
+      xpress::objects::Inequality& inequality,
+      const std::string& name);
 
   // Reads the solved column values into solution_ so expressions created by
   // this problem can evaluate themselves. See XpressV2SolutionSlot.

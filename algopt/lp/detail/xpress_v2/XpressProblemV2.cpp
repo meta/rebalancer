@@ -249,6 +249,14 @@ std::shared_ptr<ConstraintImpl> XpressProblemV2::newConstraint(
   }
   markModified();
   auto inequality = problem_.addConstraint(v2Relation->makeDefinition());
+  applyConstraintName(inequality, name);
+  return std::make_shared<XpressV2Constraint>(
+      std::move(inequality), this, names_);
+}
+
+void XpressProblemV2::applyConstraintName(
+    xpress::objects::Inequality& inequality,
+    const std::string& name) {
   if (!name.empty()) {
     auto nativeName = *uniqueName(name, usedConstraintNames_);
     if (nativeName != name) {
@@ -261,8 +269,6 @@ std::shared_ptr<ConstraintImpl> XpressProblemV2::newConstraint(
       inequality.setName(nativeName);
     }
   }
-  return std::make_shared<XpressV2Constraint>(
-      std::move(inequality), this, names_);
 }
 
 void XpressProblemV2::deleteConstraint(

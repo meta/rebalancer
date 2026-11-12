@@ -18,8 +18,9 @@
 #include "algopt/rebalancer/common/CoroUtils.h"
 #include "algopt/rebalancer/solver/utils/Problem.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -208,8 +209,43 @@ void LPStore::checkInfeasible(Problem& p) const {
 algopt::lp::Constraint LPStore::addConstraint(
     const algopt::lp::Relation& expr,
     const std::string& name) const {
-  lpCtrCounter_++;
+  reserveConstraintAttempts(lpCtrCounter_, 1);
   return lpProblem_->newConstraint(expr, name);
+}
+
+int LPStore::reserveConstraintAttempts(
+    std::atomic<int>& counter,
+    size_t count) {
+  constexpr int kMaximum = std::numeric_limits<int>::max();
+  if (count > static_cast<size_t>(kMaximum)) {
+    throw std::overflow_error(
+        fmt::format(
+            "constraint request count {} exceeds counter maximum {}",
+            count,
+            kMaximum));
+  }
+  const int increment = static_cast<int>(count);
+  int current = counter.load(std::memory_order_relaxed);
+  do {
+    if (current < 0 || increment > kMaximum - current) {
+      throw std::overflow_error(
+          fmt::format(
+              "constraint attempt counter {} cannot add {} requests (maximum {})",
+              current,
+              count,
+              kMaximum));
+    }
+  } while (!counter.compare_exchange_weak(
+      current, current + increment, std::memory_order_relaxed));
+  return current + increment;
+}
+
+std::vector<algopt::lp::Constraint> LPStore::addConstraints(
+    const algopt::lp::Problem::ConstraintRequests& requests) const {
+  if (!requests.empty()) {
+    reserveConstraintAttempts(lpCtrCounter_, requests.size());
+  }
+  return lpProblem_->newConstraints(requests);
 }
 
 void LPStore::updateParam(const std::string& paramName, double val) const {

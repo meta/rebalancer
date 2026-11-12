@@ -18,6 +18,8 @@
 #include "algopt/rebalancer/solver/expressions/Expression.h"
 #include "algopt/rebalancer/solver/utils/Problem.h"
 
+#include <algorithm>
+
 namespace facebook::rebalancer {
 LpEvaluator::LpEvaluator(
     LpContext& context,
@@ -99,6 +101,11 @@ algopt::lp::Constraint LpEvaluator::addLpConstraint(
   return problem_.lp_store.addConstraint(expr, name);
 }
 
+std::vector<algopt::lp::Constraint> LpEvaluator::addLpConstraints(
+    const algopt::lp::Problem::ConstraintRequests& requests) const {
+  return problem_.lp_store.addConstraints(requests);
+}
+
 algopt::lp::Variable LpEvaluator::makeLpVar(
     LpVarType lpVarType,
     const std::string& name) const {
@@ -157,6 +164,39 @@ std::optional<algopt::lp::Expression> LpEvaluator::addNativePwlConstraint(
 std::optional<algopt::lp::Expression> LpEvaluator::addNativeMaxConstraint(
     const std::vector<algopt::lp::Expression>& inputs) const {
   return problem_.lp_store.getLpProblem().addNativeMaxConstraint(inputs);
+}
+
+LpConstraintBatch::LpConstraintBatch(
+    const LpEvaluator& evaluator,
+    size_t reserve)
+    : evaluator_(evaluator),
+      enabled_(
+          !evaluator.getProblem().configs.enableParallelizedLpBuilding &&
+          evaluator.getProblem()
+              .lp_store.getLpProblem()
+              .supportsConstraintBatching()) {
+  if (enabled_) {
+    requests_.reserve(std::min(reserve, kBatchSize));
+  }
+}
+
+void LpConstraintBatch::add(
+    std::pair<algopt::lp::Relation, std::string> request) {
+  if (!enabled_) {
+    evaluator_.addLpConstraint(request.first, request.second);
+    return;
+  }
+  requests_.push_back(std::move(request));
+  if (requests_.size() == kBatchSize) {
+    flush();
+  }
+}
+
+void LpConstraintBatch::flush() {
+  if (!requests_.empty()) {
+    evaluator_.addLpConstraints(requests_);
+    requests_.clear();
+  }
 }
 
 } // namespace facebook::rebalancer

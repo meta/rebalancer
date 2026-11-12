@@ -15,6 +15,7 @@
 #pragma once
 
 #include "algopt/lp/generic/Constraint.h"
+#include "algopt/lp/generic/Problem.h"
 #include "algopt/rebalancer/algopt_common/InsertOrderedFastSet.h"
 #include "algopt/rebalancer/entities/Identifiers.h"
 #include "algopt/rebalancer/solver/expressions/Evaluator.h"
@@ -48,6 +49,8 @@ class LpEvaluator : public Evaluator {
   algopt::lp::Constraint addLpConstraint(
       const algopt::lp::Relation& expr,
       const std::string& name = "constraint") const;
+  std::vector<algopt::lp::Constraint> addLpConstraints(
+      const algopt::lp::Problem::ConstraintRequests& requests) const;
 
   algopt::lp::Variable makeLpVar(LpVarType lpVarType, const std::string& name)
       const;
@@ -124,6 +127,30 @@ class LpEvaluator : public Evaluator {
     throw std::runtime_error(
         "isPositive cannot be used with object of type LpEvaluator");
   }
+};
+
+// Operator-local completed requests. Flush explicitly at the end and before
+// nested LP/native operations; destruction never mutates the model. Parallel
+// LP builders retain eager scalar emission at each add call.
+class LpConstraintBatch {
+ public:
+  explicit LpConstraintBatch(
+      const LpEvaluator& evaluator,
+      size_t reserve = 128);
+  LpConstraintBatch(const LpConstraintBatch&) = delete;
+  LpConstraintBatch& operator=(const LpConstraintBatch&) = delete;
+  LpConstraintBatch(LpConstraintBatch&&) = delete;
+  LpConstraintBatch& operator=(LpConstraintBatch&&) = delete;
+  ~LpConstraintBatch() = default;
+
+  void add(std::pair<algopt::lp::Relation, std::string> request);
+  void flush();
+
+ private:
+  static constexpr size_t kBatchSize = 128;
+  const LpEvaluator& evaluator_;
+  const bool enabled_;
+  algopt::lp::Problem::ConstraintRequests requests_;
 };
 
 } // namespace facebook::rebalancer

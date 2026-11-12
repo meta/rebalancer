@@ -28,6 +28,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace facebook::algopt::lp {
@@ -289,6 +290,20 @@ class ProblemImpl {
   // storting parameters and time limits for the multi-objective solve
   // per objective
   std::optional<MultiObjConfig> multiObjConfig_;
+
+ public:
+  using ConstraintRequests =
+      std::vector<std::pair<std::shared_ptr<const RelationImpl>, std::string>>;
+
+  // Synchronous, ordered construction. Backends without bulk insertion use
+  // newConstraint for each request. See Problem::newConstraints for the
+  // exception contract; in particular, this fallback can retain a valid prefix.
+  virtual std::vector<std::shared_ptr<ConstraintImpl>> newConstraints(
+      const ConstraintRequests& requests);
+
+  // Native construction batching is an opt-in capability, not backend
+  // selection. The explicit bulk API remains available through scalar fallback.
+  virtual bool supportsConstraintBatching() const;
 };
 
 class Problem {
@@ -315,9 +330,28 @@ class Problem {
 
   static Expression makeExpression(double constant = 0);
 
+  using ConstraintRequests = std::vector<std::pair<Relation, std::string>>;
+
   Constraint newConstraint(
       const Relation& relation,
       const std::string& name = "");
+
+  // Constructs completed requests synchronously and returns real handles in
+  // request order. Empty names have the same meaning as in newConstraint.
+  // No handle or insertion is deferred beyond this call. Access to the same
+  // model must be serialized, including other model/handle/native operations.
+  // Backends may deliberately use scalar construction for unsupported bulk
+  // representations without selecting a different backend.
+  //
+  // Basic exception guarantee: on ANY exception discard the entire Problem;
+  // do not retry the batch or continue using the model. Backends may retain a
+  // valid prefix or undo native rows, but extraction, callbacks and naming
+  // state need not roll back. This is not scalar failure equivalence.
+  std::vector<Constraint> newConstraints(const ConstraintRequests& requests);
+
+  // True only for backends that implement native construction batching.
+  bool supportsConstraintBatching() const;
+
   void deleteConstraint(Constraint& constraint);
 
   // setObjective() always *sets* an objective---meaning all the previously

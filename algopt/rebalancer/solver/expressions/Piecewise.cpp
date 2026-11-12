@@ -34,9 +34,8 @@ namespace {
 constexpr std::string_view type = "Piecewise";
 }
 
-#define PIECEWISE_NEWCTR(x)  \
-  evaluator.addLpConstraint( \
-      x, folly::to<std::string>("piecewise_function_", __LINE__))
+#define PIECEWISE_NEWCTR(x) \
+  batch.add({x, folly::to<std::string>("piecewise_function_", __LINE__)})
 
 namespace facebook::rebalancer {
 
@@ -267,6 +266,8 @@ algopt::lp::Expression build_piecewise_linear_function(
   const bool shouldMinimize = minimizing && isNonDecreasing(points);
   auto& exprLp = evaluator.lp(expr.get(), shouldMinimize, configs);
 
+  LpConstraintBatch batch(evaluator);
+
   bool strictlyIncreasingX = true;
   std::vector<algopt::lp::Variable> lambda;
   auto lambda_sum = evaluator.makeLpExpression();
@@ -332,12 +333,14 @@ algopt::lp::Expression build_piecewise_linear_function(
       // would make z_expr = points[i].second)
       const auto diff = expr - currX;
       const auto isEqual = 1 - step(max(diff, -1 * diff));
+      batch.flush();
       PIECEWISE_NEWCTR(
           lambda.at(i) >=
           evaluator.lp(isEqual.get(), /*minimizing=*/false, configs));
     }
   }
 
+  batch.flush();
   return z_expr;
 }
 
