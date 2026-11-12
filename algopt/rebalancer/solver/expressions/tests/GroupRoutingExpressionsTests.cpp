@@ -285,6 +285,34 @@ CO_TEST_F(GroupRoutingExpressionsTest, GroupRoutingTrafficLookup) {
   testGroupTrafficExpression(scopeItem(4) /*region4*/, 0.2, 0.4 / 3);
 }
 
+CO_TEST_F(GroupRoutingExpressionsTest, ApplyMoveOutOfRegionWithTwoTenants) {
+  co_await setup(/*useDefaultOriginToScopeItemSets=*/false);
+  const auto groupTrafficLookup = std::make_shared<GroupRoutingTrafficLookup>(
+      buildRoutingRing(), scopeItem(1) /*region1*/, *universe_);
+  auto assignment = makeAssignmentWithOverrides({{tenant(2), region(4)}});
+  _apply(*groupTrafficLookup, assignment);
+
+  // Move tenant2 out of region4, which still has tenant3. If the move were
+  // applied twice, region4 would look empty and region1 would get 0.3 + 0.4.
+  Context context;
+  context.changes() = ChangeSet(
+      {Change(tenant(2), region(4), -1), Change(tenant(2), region(3), 1)});
+  assignment.moveTo(tenant(2), region(3));
+
+  // Use a large object and container count for AffectedByChangeDecisionData so
+  // that GroupRoutingRing::isAffectedByChange keeps both containers and
+  // objects and does not use any optimizatinos
+  // inhttps://fburl.com/code/3uhileg7.
+  constexpr int maxNumObjects = 100;
+  constexpr int maxNumContainers = 100;
+  const AffectedByChangeDecisionData data(maxNumObjects, maxNumContainers);
+  Orchestrator orchestrator;
+  orchestrator.init({groupTrafficLookup.get()}, data);
+  orchestrator.apply(context, assignment);
+
+  EXPECT_DOUBLE_EQ(0.2 + 0.4, groupTrafficLookup->value);
+}
+
 CO_TEST_F(GroupRoutingExpressionsTest, useDefaultOriginToScopeItemSets) {
   co_await setup(/*useDefaultOriginToScopeItemSets=*/true);
   {

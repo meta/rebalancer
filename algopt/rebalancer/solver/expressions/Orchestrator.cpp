@@ -378,26 +378,11 @@ void Orchestrator::notifyChange(Context& context, Expression* changedNode)
 
 void Orchestrator::computeChangedLeavesByRoot(Context& context, int root)
     const {
-  /*
-  Every leaf is part of only one of toCheckLeaves_, containerToLeaves_,
-  objectToLeaves_, or containerObjectToLeaves_.
-
-  Therefore, if there is only one complete set of moves (i.e., changeSet size is
-  2), then we do not need to dedupe the leaves and can instead directly push
-  them to the readyNodes priority queue.
-
-  Since computeChangedLeaves is called many times, we want to avoid the overhead
-  of set insertions when possible
-*/
-  const bool shouldDedupeLeaves = context.changes() &&
-      !context.changes()->empty() && !context.changes()->representsSingleMove();
-
-  PackerSet<LeafId> leaves; // only used when shouldDedupeLeaves is true
+  PackerSet<LeafId> leaves;
 
   auto& readyNodes = context.readyNodes();
   const auto processLeaf = [&](LeafId leafId) {
-    const bool isNew = (!shouldDedupeLeaves || leaves.insert(leafId).second);
-    if (isNew) {
+    if (leaves.insert(leafId).second) {
       auto leaf = leafStore_.at(leafId);
       readyNodes.emplace(priority(leaf), leaf);
     }
