@@ -1018,6 +1018,12 @@ class FixedDestMoveTypeSpec(TypedDict, total=False):
     objectBundleFormationHints: ObjectBundleFormationHints
 
 
+class GroupOccupancySampling(TypedDict, total=False):
+    partition: str
+    scope: str
+    scopeItem: str
+
+
 class RasLocalSearchMetadata(TypedDict, total=False):
     defaultMultiMoveBundleSize: int  # default 1
     multiMoveBundleSizePerContainer: dict[str, list[int]]
@@ -1040,6 +1046,7 @@ class RasLocalSearchMetadata(TypedDict, total=False):
     objectBundleFormationhints: ObjectBundleFormationHints
     swapRatioDimension: StringKeyValueMap
     physicalGpuOverlapPartitionName: str
+    groupOccupancySampling: GroupOccupancySampling
 
 
 class FixedSrcMultiMoveTypeSpec(TypedDict, total=False):

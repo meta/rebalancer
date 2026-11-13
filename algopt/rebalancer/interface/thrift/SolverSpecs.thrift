@@ -65,6 +65,21 @@ struct CustomEquivalenceSetConfig {
 ///// SPECS AND UTILS RELATED to LocalSearch
 ///////////////////////////////////////////////////////
 
+// Sampling for a goal over the groups of `partition` (e.g. sleds), such as
+// GroupDiversity MAX, in the containers of `scopeItem` of `scope`. The
+// occupancy of a group is its number of objects in those containers, and
+// follows every applied move. For a move into those containers, the stackable
+// multi move types sample, per equivalence set, only the objects of the highest
+// occupancy that has a candidate; for a move out of them, the lowest. Objects
+// in no group are always sampled. Other moves, and bundles formed across the
+// servers of an equivalence set (1:k swaps), are sampled as before. `partition`
+// must be disjoint.
+struct GroupOccupancySampling {
+  1: string partition;
+  2: string scope;
+  3: string scopeItem;
+}
+
 struct RasLocalSearchMetadata {
   1: i32 defaultMultiMoveBundleSize = 1;
   2: map<string, list<i32>> multiMoveBundleSizePerContainer;
@@ -122,6 +137,8 @@ struct RasLocalSearchMetadata {
   // in the format "ServerName_GPUId". At most one object from each group can
   // be allocated at once from the special container.
   21: string physicalGpuOverlapPartitionName;
+  // Off unless set. Only the stackable solve of RasHybridSolver supports it.
+  22: optional GroupOccupancySampling groupOccupancySampling;
 }
 
 // The name is slightly misleading and is that way for historical reasons

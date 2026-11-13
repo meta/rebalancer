@@ -16,10 +16,13 @@
 
 #include "algopt/rebalancer/solver/moves/InvalidMoveFilter.h"
 #include "algopt/rebalancer/solver/moves/MoveHelper.h"
+#include "algopt/rebalancer/solver/utils/GroupOccupancyIndex.h"
 #include "algopt/rebalancer/solver/utils/OneObjectPerGroup.h"
 
 #include <folly/container/irange.h>
 #include <folly/String.h>
+
+#include <ranges>
 
 namespace facebook::rebalancer {
 
@@ -468,7 +471,8 @@ std::vector<ObjectBundle> FixedSrcDstMoveCandidateGenerator<MoveTypeSpecT>::
                  kAllowedScopeItemsPerGroupAttrName.str())
              .getGroupsWithNonZeroCount(*dstContainerShape)
       : nullptr;
-  for (auto& [equivSetId, partsPerServer] : currentSrcContainerEquivSets) {
+  // Returns whether it selected a candidate.
+  const auto sampleEquivSet = [&](auto equivSetId, const auto& partsPerServer) {
     if (formBundlesAtEquivSetGranularity) {
       assert(multiObjSelectionConfig.has_value());
       const auto serverId = partsPerServer.begin()->first;
@@ -483,7 +487,7 @@ std::vector<ObjectBundle> FixedSrcDstMoveCandidateGenerator<MoveTypeSpecT>::
             *validSearchSpaceGroups,
             searchSpacePartition)) {
       invalidEquivSets++;
-      continue;
+      return false;
     }
     int numCandidatesSelected = 0;
     for (auto& [serverId, thisServerParts] : partsPerServer) {
@@ -533,6 +537,48 @@ std::vector<ObjectBundle> FixedSrcDstMoveCandidateGenerator<MoveTypeSpecT>::
         // Bundle not built but still need to reset for next server
         objectBundleSelector->reset();
       }
+    }
+    return numCandidatesSelected > 0;
+  };
+
+  // 10. For a move into the scope item of groupOccupancySampling, each
+  // equivalence set samples its highest occupancy that has a candidate; for a
+  // move out, its lowest. Objects in no group are always sampled. A bundle
+  // formed across servers may need several occupancies, so it is sampled as
+  // usual.
+  const auto* const groupOccupancyIndex =
+      rasMetadata.groupOccupancySampling().has_value()
+      ? &problem.getEntityAttributeStore().getAttributes<GroupOccupancyIndex>(
+            kGroupOccupancyIndexAttrName.str())
+      : nullptr;
+  const bool fromScopeItem =
+      groupOccupancyIndex && groupOccupancyIndex->isInScopeItem(srcContainer);
+  const bool toScopeItem =
+      groupOccupancyIndex && groupOccupancyIndex->isInScopeItem(dstContainer);
+  const auto sampleFirstOccupancyWithCandidates = [&](const auto& buckets) {
+    std::optional<EquivalenceSetId> sampledEquivSet;
+    for (const auto& [key, partsPerServer] : buckets) {
+      if (key.occupancy == GroupOccupancyIndex::kUngrouped) {
+        sampleEquivSet(key.equivSetId, partsPerServer);
+      } else if (
+          sampledEquivSet != key.equivSetId &&
+          sampleEquivSet(key.equivSetId, partsPerServer)) {
+        sampledEquivSet = key.equivSetId;
+      }
+    }
+  };
+  if (fromScopeItem != toScopeItem && !formBundlesAtEquivSetGranularity) {
+    const auto& buckets =
+        groupOccupancyIndex->getContainerObjects(srcContainer);
+    if (fromScopeItem) {
+      sampleFirstOccupancyWithCandidates(buckets);
+    } else {
+      sampleFirstOccupancyWithCandidates(buckets | std::views::reverse);
+    }
+  } else {
+    for (const auto& [equivSetId, partsPerServer] :
+         currentSrcContainerEquivSets) {
+      sampleEquivSet(equivSetId, partsPerServer);
     }
   }
 

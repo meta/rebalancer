@@ -44,6 +44,9 @@ constexpr folly::StringPiece kAllowedScopeItemsPerGroupAttrName =
 constexpr folly::StringPiece kGpuTopologyOverlapTrackerAttrName =
     "GpuTopologyOverlapTracker";
 
+constexpr folly::StringPiece kGroupOccupancyIndexAttrName =
+    "groupOccupancyIndexAttr";
+
 // in some cases, such as 1:k SWAP move types, we may still want to select
 // multiple objects even in the adaptive allotment universe. This config setting
 // will store the necessary parameters
