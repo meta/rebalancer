@@ -13,11 +13,14 @@
 // limitations under the License.
 
 #include "algopt/rebalancer/solver/expressions/ObjectPartitionMoveLimit.h"
+#include "algopt/rebalancer/interface/UniverseProblemBuilder.h"
 #include "algopt/rebalancer/solver/expressions/tests/ExpressionTestsBase.h"
 #include "algopt/rebalancer/solver/expressions/tests/ExpressionUtils.h"
 
 #include <folly/coro/GtestHelpers.h>
 #include <gtest/gtest.h>
+
+#include <limits>
 
 namespace facebook::rebalancer::packer::tests {
 
@@ -608,4 +611,154 @@ CO_TEST_F(ObjectPartitionMoveLimitTest, DynamicDimensionBoundsTest) {
     EXPECT_EQ(0.0, upper_bound(*expr));
   }
 }
+
+CO_TEST_F(ObjectPartitionMoveLimitTest, SparseRowsWithDifferentDefaultCosts) {
+  entities::Map<std::string, std::vector<std::string>> assignment;
+  entities::Map<std::string, std::vector<std::string>> groups;
+  entities::Map<std::string, entities::Map<std::string, double>> values;
+  for (int c = 0; c < 8; ++c) {
+    assignment[fmt::format("container{}", c)] = {};
+  }
+  for (int o = 0; o < 32; ++o) {
+    const auto object = fmt::format("object{}", o);
+    assignment["container0"].push_back(object);
+    groups["group0"].push_back(object);
+  }
+  values["container0"]["object0"] = 3.0;
+  values["container0"]["object1"] = 2.0;
+  for (int c = 1; c < 8; ++c) {
+    values[fmt::format("container{}", c)]["object1"] = 3.0;
+    values[fmt::format("container{}", c)]["object2"] = 3.0;
+  }
+  co_await setUpTestUniverse(assignment, groups, {}, values);
+  buildUniverse();
+  const auto& universe = getUniverse();
+  const auto expression = makeObjectPartitionMoveLimit(universe, {});
+  EquivalenceSets sets(universe);
+  updateEquivalenceSets(sets, *expression);
+  sets.finalize();
+  EXPECT_EQ(sets.size(), 2);
+  EXPECT_EQ(sets.at(object(0)), sets.at(object(1)));
+  EXPECT_EQ(sets.at(object(1)), sets.at(object(2)));
+  EXPECT_NE(sets.at(object(2)), sets.at(object(3)));
+
+  entities::Set<entities::ContainerId> allDestinations;
+  for (const auto destination : universe.getContainers().getContainerIds()) {
+    allDestinations.insert(destination);
+  }
+  for (const bool ignoreSource : {false, true}) {
+    const auto ignored = makeObjectPartitionMoveLimit(
+        universe, {},
+        ignoreSource ? entities::Set<entities::ContainerId>{container(0)}
+                     : entities::Set<entities::ContainerId>{},
+        ignoreSource ? entities::Set<entities::ContainerId>{}
+                     : allDestinations);
+    EquivalenceSets ignoredSets(universe);
+    updateEquivalenceSets(ignoredSets, *ignored);
+    ignoredSets.finalize();
+    EXPECT_EQ(ignoredSets.size(), 1);
+  }
+}
+
+CO_TEST_F(ObjectPartitionMoveLimitTest, DenseRowsPreserveFiltersAndPartitions) {
+  co_await setUpTestUniverse(
+      {{"container0", {"object0", "object1", "object2", "object3"}},
+       {"container1", {"object4"}},
+       {"container2", {"object5"}}},
+      {{"group0", {"object0", "object1", "object2", "object3", "object4"}},
+       {"group1", {"object3"}}},
+      {},
+      entities::Map<std::string, entities::Map<std::string, double>>{
+          {"container0", {{"object0", 2}}},
+          {"container1", {{"object1", 2}, {"object2", 3}, {"object3", 2}}},
+          {"container2",
+           {{"object0", 3}, {"object1", 3}, {"object2", 3}, {"object3", 3}}}});
+  buildUniverse();
+  const auto& universe = getUniverse();
+  for (const bool filtered : {false, true}) {
+    const auto expression = makeObjectPartitionMoveLimit(
+        universe, {}, {},
+        filtered ? entities::Set<entities::ContainerId>{container(1)}
+                 : entities::Set<entities::ContainerId>{});
+    EquivalenceSets sets(universe);
+    updateEquivalenceSets(sets, *expression);
+    sets.finalize();
+    EXPECT_EQ(sets.size(), filtered ? 4 : 5);
+    EXPECT_EQ(sets.at(object(0)), sets.at(object(1)));
+    EXPECT_EQ(sets.at(object(0)) == sets.at(object(2)), filtered);
+    EXPECT_NE(sets.at(object(0)), sets.at(object(3)));
+    EXPECT_NE(sets.at(object(0)), sets.at(object(4)));
+    EXPECT_NE(sets.at(object(0)), sets.at(object(5)));
+  }
+}
+
+TEST_F(ObjectPartitionMoveLimitTest, GroupBackedCostsMergeEqualRows) {
+  interface::UniverseProblemBuilder builder(nullptr);
+  builder.setObjectName("object");
+  builder.setContainerName("container");
+  builder.setGroupBackedDynamicDimensions(true);
+  builder.setAssignment(entities::Map<std::string, std::vector<std::string>>{
+      {"container0", {"object0", "object1", "object2", "object3", "object4"}},
+      {"container1", {"object5"}},
+      {"container2", {}}});
+  builder.addPartition("cost",
+                       entities::Map<std::string, std::vector<std::string>>{
+                           {"a", {"object0", "object1", "object5"}},
+                           {"b", {"object2"}},
+                           {"c", {"object3"}}});
+  builder.addPartition("migration",
+                       entities::Map<std::string, std::vector<std::string>>{
+                           {"all",
+                            {"object0", "object1", "object2", "object3",
+                             "object4", "object5"}}});
+  builder.addDynamicObjectDimension(
+      "cost", "container", "cost",
+      entities::Map<std::string, entities::Map<std::string, double>>{
+          {"container0", {{"a", 2}}},
+          {"container1", {{"a", 2}, {"b", 2}, {"c", 3}}},
+          {"container2", {{"a", 3}, {"b", 3}, {"c", 2}}}},
+      1.0);
+  const auto universe = builder.build();
+  const auto dimension = universe->getDimensionId("cost");
+  EXPECT_EQ(nullptr, universe->getObjects()
+                         .getDimension(dimension)
+                         .only()
+                         .values(universe->getScopeItemId(
+                             universe->getScopeId("container"), "container1"))
+                         .asMapOrNull());
+  ObjectPartitionMoveLimit expression(
+      *universe, Assignment(universe->getContainers().getInitialAssignment()),
+      universe->getPartitionId("migration"), dimension, {}, {}, {});
+  EquivalenceSets sets(*universe);
+  updateEquivalenceSets(sets, expression);
+  sets.finalize();
+  EXPECT_EQ(sets.size(), 4);
+  EXPECT_EQ(sets.at(universe->getObjectId("object0")),
+            sets.at(universe->getObjectId("object1")));
+  EXPECT_EQ(sets.at(universe->getObjectId("object1")),
+            sets.at(universe->getObjectId("object2")));
+}
+
+CO_TEST_F(ObjectPartitionMoveLimitTest, NonFiniteSourceCostsPreserveGroups) {
+  co_await setUpTestUniverse(
+      {{"container0", {"object0", "object1", "object2", "object3"}},
+       {"container1", {}}},
+      {{"group0", {"object0", "object1", "object2", "object3"}}}, {},
+      entities::Map<std::string, entities::Map<std::string, double>>{
+          {"container0",
+           {{"object0", std::numeric_limits<double>::infinity()},
+            {"object1", std::numeric_limits<double>::infinity()},
+            {"object2", std::numeric_limits<double>::quiet_NaN()},
+            {"object3", std::numeric_limits<double>::quiet_NaN()}}}});
+  buildUniverse();
+  const auto& universe = getUniverse();
+  const auto expression = makeObjectPartitionMoveLimit(universe, {});
+  EquivalenceSets sets(universe);
+  updateEquivalenceSets(sets, *expression);
+  sets.finalize();
+  EXPECT_EQ(sets.size(), 3);
+  EXPECT_EQ(sets.at(object(0)), sets.at(object(1)));
+  EXPECT_NE(sets.at(object(2)), sets.at(object(3)));
+}
+
 } // namespace facebook::rebalancer::packer::tests
