@@ -15,7 +15,9 @@
 #include "algopt/rebalancer/entities/ObjectValueTypes.h"
 #include "algopt/rebalancer/entities/Partition.h"
 #include "algopt/rebalancer/entities/tests/UniverseBuilderTestUtils.h"
+#include "algopt/rebalancer/interface/UniverseProblemBuilder.h"
 #include "algopt/rebalancer/solver/expressions/Expression.h"
+#include "algopt/rebalancer/solver/expressions/ObjectPartitionMoveLimit.h"
 #include "algopt/rebalancer/solver/expressions/Operators.h"
 #include "algopt/rebalancer/solver/tests/ExprProblemCreation.h"
 
@@ -233,6 +235,51 @@ void benchmarkAtThroughput(int numObjects, int nIter) {
 
 BENCHMARK(EquivalenceSetsAtThroughput) {
   benchmarkAtThroughput(/*numObjects=*/1e6, /*nIter=*/100);
+}
+
+BENCHMARK(GroupBackedMoveLimitEquivalence) {
+  folly::BenchmarkSuspender suspend;
+  constexpr int kObjects = 100'000;
+  constexpr int kContainers = 1'000;
+  constexpr int kCostGroups = 100;
+  interface::UniverseProblemBuilder builder(nullptr);
+  builder.setObjectName("object");
+  builder.setContainerName("container");
+  builder.setGroupBackedDynamicDimensions(true);
+  entities::Map<std::string, std::vector<std::string>> assignment;
+  entities::Map<std::string, std::vector<std::string>> groups;
+  entities::Map<std::string, entities::Map<std::string, double>> values;
+  std::vector<std::string> objects;
+  for (int c = 0; c < kContainers; ++c) {
+    const auto container = fmt::format("container{}", c);
+    assignment[container] = {};
+    for (int g = 0; g < kCostGroups; ++g) {
+      values[container][fmt::format("group{}", g)] = 2.0 + (c + g) % 3;
+    }
+  }
+  for (int o = 0; o < kObjects; ++o) {
+    const auto object = fmt::format("object{}", o);
+    objects.push_back(object);
+    assignment["container0"].push_back(object);
+    groups[fmt::format("group{}", o % kCostGroups)].push_back(object);
+  }
+  builder.setAssignment(assignment);
+  builder.addPartition("cost", groups);
+  builder.addPartition(
+      "migration",
+      entities::Map<std::string, std::vector<std::string>>{{"all", objects}});
+  builder.addDynamicObjectDimension("cost", "container", "cost", values, 1.0);
+  const auto universe = builder.build();
+  ObjectPartitionMoveLimit expression(
+      *universe, Assignment(universe->getContainers().getInitialAssignment()),
+      universe->getPartitionId("migration"), universe->getDimensionId("cost"),
+      {}, {}, {});
+  suspend.dismiss();
+
+  EquivalenceSets sets(*universe);
+  expression.updateEquivalenceSets(sets);
+  sets.finalize();
+  folly::doNotOptimizeAway(sets);
 }
 
 int main(int argc, char** argv) {

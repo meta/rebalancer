@@ -19,8 +19,10 @@
 #include "algopt/rebalancer/solver/expressions/TopToBottomEvaluator.h"
 
 #include <folly/container/Enumerate.h>
+#include <folly/hash/Hash.h>
 
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 #include <vector>
 
@@ -68,39 +70,254 @@ const std::string_view& ObjectPartitionMoveLimit::getType() const {
   return type;
 }
 
+struct ObjectPartitionMoveLimit::MoveCostDestination {
+  entities::ContainerId id;
+  const entities::ObjectValues* values;
+};
+
 void ObjectPartitionMoveLimit::updateEquivalenceSets(
     EquivalenceSets& equivalenceSets) const {
-  // object belongs to different groups belongs to different set
   equivalenceSets.mappingMerge(partitionId_);
-  // two objects that belong to same initial container and have the same weights
-  // for all containers are equivalent.
-  // Because we are comparing a list of weights across all objects to determine
-  // equivalency, it will be expensive when the container size is large, thus
-  // eliminating the performance gains from equivalent sets. We need to revisit
-  // this logic for large container sizes.
-  const auto& objectToGroups = partition_->getObjectIdToGroupIds();
-  auto isDynamic = dimension_->isDynamic();
-  PackerMap<
-      entities::ObjectId,
-      std::pair<entities::ContainerId, std::vector<double>>>
-      mergeMap;
-  for (const auto& [object, _] : objectToGroups) {
-    auto sourceContainer = originalAssignment_.getContainer(object);
-    std::vector<double> weights;
-    if (!isDynamic) {
-      weights = {dimension_->getValue(object)};
-    } else {
-      const auto containersIds = universe_->getContainers().getContainerIds();
-      weights.reserve(containersIds.size());
-      for (const auto& container : containersIds) {
-        weights.push_back(getObjectMoveCost(object, container));
-      }
-    }
-
-    mergeMap.emplace(object, std::make_pair(sourceContainer, weights));
+  const auto& objects = partition_->getObjectIdToGroupIds();
+  if (objects.empty()) {
+    return;
   }
 
-  equivalenceSets.mappingMerge(mergeMap);
+  using ObjectId = entities::ObjectId;
+  using ContainerId = entities::ContainerId;
+  if (!dimension_->isDynamic()) {
+    PackerMap<std::pair<ContainerId, double>, std::vector<ObjectId>> groups;
+    for (const auto& [object, _] : objects) {
+      groups[{originalAssignment_.getContainer(object),
+              dimension_->getValue(object)}]
+          .push_back(object);
+    }
+    for (const auto& [_, group] : groups) {
+      equivalenceSets.combine(group);
+    }
+    return;
+  }
+
+  std::vector<MoveCostDestination> destinations;
+  size_t nonDefaultValues = 0;
+  const double defaultValue = dimension_->getDefaultValue();
+  bool uniformDefault = !std::isnan(defaultValue);
+  for (const auto container : universe_->getContainers().getContainerIds()) {
+    if (destinationContainerIdsNotAffectingLimit_.contains(container)) {
+      continue;
+    }
+    const auto scopeItem = universe_->getScopeItemId(
+        containerScopeId_, universe_->getEntityName(container));
+    const auto& values = dimension_->values(scopeItem);
+    uniformDefault &= values.defaultValue() == defaultValue;
+    nonDefaultValues += values.nonDefaultCount();
+    destinations.push_back({container, &values});
+  }
+  std::sort(destinations.begin(), destinations.end(),
+            [](const MoveCostDestination& a, const MoveCostDestination& b) {
+              return a.id < b.id;
+            });
+
+  constexpr double kMaxSparseCostDensity = 0.25;
+  const double sparseValueLimit =
+      kMaxSparseCostDensity * objects.size() * destinations.size();
+  if (!uniformDefault || nonDefaultValues > sparseValueLimit) {
+    mergeDenseEquivalenceSets(equivalenceSets, destinations);
+  } else {
+    mergeSparseEquivalenceSets(equivalenceSets, destinations, defaultValue);
+  }
+}
+
+const entities::Partition*
+ObjectPartitionMoveLimit::getSharedCostPartition() const {
+  std::optional<entities::PartitionId> costPartitionId;
+  for (const auto container : universe_->getContainers().getContainerIds()) {
+    const auto scopeItem = universe_->getScopeItemId(
+        containerScopeId_, universe_->getEntityName(container));
+    const auto& values = dimension_->values(scopeItem);
+    if (std::isnan(values.defaultValue())) {
+      return nullptr;
+    }
+    const bool compatible = values.visit(
+        [](const entities::ObjectIdToDoubleMap& map) {
+          return map.nonDefaultSize() == 0;
+        },
+        [&](entities::PartitionId id,
+            const entities::GroupIdToDoubleMap& groupValues) {
+          if (costPartitionId && *costPartitionId != id) {
+            return false;
+          }
+          costPartitionId = id;
+          return std::none_of(
+              groupValues.begin(), groupValues.end(),
+              [](const auto& entry) { return std::isnan(entry.second); });
+        });
+    if (!compatible) {
+      return nullptr;
+    }
+  }
+  return costPartitionId ? &universe_->getPartition(*costPartitionId) : nullptr;
+}
+
+void ObjectPartitionMoveLimit::mergeDenseEquivalenceSets(
+    EquivalenceSets& equivalenceSets,
+    const std::vector<MoveCostDestination>& destinations) const {
+  using ObjectId = entities::ObjectId;
+  using ContainerId = entities::ContainerId;
+  const auto& objects = partition_->getObjectIdToGroupIds();
+  const auto* costPartition = getSharedCostPartition();
+  using CostGroup = std::pair<ContainerId, std::optional<entities::GroupId>>;
+  PackerMap<CostGroup, size_t> costGroupToRow;
+  struct DenseKey {
+    ContainerId source;
+    std::vector<double> costs;
+    bool operator==(const DenseKey&) const = default;
+  };
+  struct DenseHash {
+    size_t operator()(const DenseKey& key) const {
+      return folly::hash::hash_combine(
+          key.source,
+          folly::hash::hash_range(key.costs.begin(), key.costs.end()));
+    }
+  };
+  folly::F14FastMap<DenseKey, size_t, DenseHash> rowIds;
+  std::vector<std::vector<ObjectId>> groups;
+  std::vector<double> costs;
+  for (const auto& [object, _] : objects) {
+    const auto source = originalAssignment_.getContainer(object);
+    CostGroup costGroup{source, std::nullopt};
+    if (costPartition) {
+      const auto* ids =
+          folly::get_ptr(costPartition->getObjectIdToGroupIds(), object);
+      if (ids && !ids->empty()) {
+        costGroup.second = ids->front();
+      }
+      if (const auto* row = folly::get_ptr(costGroupToRow, costGroup)) {
+        groups[*row].push_back(object);
+        continue;
+      }
+    }
+    costs.clear();
+    if (!sourceContainerIdsNotAffectingLimit_.contains(source)) {
+      const double sourceValue =
+          getObjectDimensionValueInContainer(object, source);
+      costs.reserve(destinations.size());
+      for (const auto& destination : destinations) {
+        costs.push_back(
+            destination.id == source
+                ? 0.0
+                : std::max(sourceValue,
+                           destination.values->getObjectValue(object)));
+      }
+    }
+    DenseKey key{source, std::move(costs)};
+    const auto [it, inserted] =
+        rowIds.try_emplace(std::move(key), groups.size());
+    if (inserted) {
+      groups.emplace_back();
+    }
+    groups[it->second].push_back(object);
+    if (costPartition) {
+      costGroupToRow.emplace(costGroup, it->second);
+    }
+    costs = std::move(key.costs);
+  }
+  for (const auto& group : groups) {
+    equivalenceSets.combine(group);
+  }
+}
+
+void ObjectPartitionMoveLimit::mergeSparseEquivalenceSets(
+    EquivalenceSets& equivalenceSets,
+    const std::vector<MoveCostDestination>& destinations,
+    double defaultValue) const {
+  using ObjectId = entities::ObjectId;
+  using ContainerId = entities::ContainerId;
+  const auto& objects = partition_->getObjectIdToGroupIds();
+  using Exceptions = std::vector<std::pair<ContainerId, double>>;
+  struct Row {
+    ContainerId source;
+    double sourceValue;
+    double defaultCost;
+    Exceptions exceptions;
+  };
+  PackerMap<ObjectId, Row> rows;
+  rows.reserve(objects.size());
+  for (const auto& [object, _] : objects) {
+    const auto source = originalAssignment_.getContainer(object);
+    const double sourceValue =
+        sourceContainerIdsNotAffectingLimit_.contains(source)
+            ? 0.0
+            : getObjectDimensionValueInContainer(object, source);
+    if (std::isnan(sourceValue)) {
+      mergeDenseEquivalenceSets(equivalenceSets, destinations);
+      return;
+    }
+    rows.emplace(
+        object,
+        Row{source, sourceValue, std::max(sourceValue, defaultValue), {}});
+  }
+
+  for (const auto& destination : destinations) {
+    destination.values->forEachNonDefault([&](ObjectId object, double value) {
+      auto it = rows.find(object);
+      if (it == rows.end()) {
+        return;
+      }
+      auto& row = it->second;
+      if (row.source == destination.id ||
+          sourceContainerIdsNotAffectingLimit_.contains(row.source)) {
+        return;
+      }
+      const double cost = std::max(row.sourceValue, value);
+      if (cost != row.defaultCost) {
+        row.exceptions.emplace_back(destination.id, cost);
+      }
+    });
+  }
+
+  struct Key {
+    ContainerId source;
+    double defaultCost;
+    Exceptions exceptions;
+    bool operator==(const Key&) const = default;
+  };
+  struct SparseHash {
+    size_t operator()(const Key& key) const {
+      const auto& exceptions = key.exceptions;
+      return folly::hash::hash_combine(
+          key.source, key.defaultCost,
+          folly::hash::hash_range(exceptions.begin(), exceptions.end()));
+    }
+  };
+  folly::F14FastMap<Key, std::vector<ObjectId>, SparseHash> groups;
+  for (auto& [object, row] : rows) {
+    const size_t destinationCount =
+        destinations.size() -
+        (!destinationContainerIdsNotAffectingLimit_.contains(row.source));
+    if (destinationCount == 0 ||
+        sourceContainerIdsNotAffectingLimit_.contains(row.source)) {
+      row.defaultCost = 0.0;
+      row.exceptions.clear();
+    } else if (row.exceptions.size() == destinationCount) {
+      // Equal rows with different defaults must override the lower default
+      // at every destination. Use their minimum cost as the common default.
+      row.defaultCost =
+          std::min_element(
+              row.exceptions.begin(), row.exceptions.end(),
+              [](const auto& a, const auto& b) { return a.second < b.second; })
+              ->second;
+      std::erase_if(row.exceptions, [&](const auto& exception) {
+        return exception.second == row.defaultCost;
+      });
+    }
+
+    groups[{row.source, row.defaultCost, std::move(row.exceptions)}].push_back(
+        object);
+  }
+  for (const auto& [_, group] : groups) {
+    equivalenceSets.combine(group);
+  }
 }
 
 void ObjectPartitionMoveLimit::set_directly_affected_containers() {
