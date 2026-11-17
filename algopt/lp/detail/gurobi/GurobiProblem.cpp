@@ -75,6 +75,7 @@ const std::map<std::string, GRB_DoubleParam> kDoubleParamCodes = {
     {"GRB_IterationLimit", GRB_DoubleParam::GRB_DoubleParam_IterationLimit},
     {"GRB_NodeLimit", GRB_DoubleParam::GRB_DoubleParam_NodeLimit},
     {"GRB_TimeLimit", GRB_DoubleParam::GRB_DoubleParam_TimeLimit},
+    {"GRB_WorkLimit", GRB_DoubleParam::GRB_DoubleParam_WorkLimit},
     {"GRB_FeasibilityTol", GRB_DoubleParam::GRB_DoubleParam_FeasibilityTol},
     {"GRB_IntFeasTol", GRB_DoubleParam::GRB_DoubleParam_IntFeasTol},
     {"GRB_MarkowitzTol", GRB_DoubleParam::GRB_DoubleParam_MarkowitzTol},
@@ -853,6 +854,9 @@ thrift::ProblemStatus GurobiProblem::getSolveStatus() try {
     case GRB_TIME_LIMIT:
       // Optimization terminated because the time expended exceeded the value
       // specified in the TimeLimit parameter.
+    case GRB_WORK_LIMIT:
+      // Optimization terminated because the work expended exceeded the value
+      // specified in the WorkLimit parameter.
     case GRB_SOLUTION_LIMIT:
       // Optimization terminated because the number of solutions found reached
       // the value specified in the SolutionLimit parameter.
