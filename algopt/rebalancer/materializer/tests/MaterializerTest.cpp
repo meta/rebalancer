@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "algopt/rebalancer/interface/tests/utils.h"
 #include "algopt/rebalancer/materializer/Materializer.h"
+#include "algopt/rebalancer/algopt_common/TestUtils.h"
+#include "algopt/rebalancer/interface/tests/utils.h"
 #include "algopt/rebalancer/materializer/utils/tests/SpecBuilderTestBase.h"
 #include "algopt/rebalancer/treeprof/ExecutorWrapper.h"
 #include <algopt/rebalancer/interface/thrift/gen-cpp2/ProblemSpecs_types.h>
@@ -101,6 +102,24 @@ class MaterializerTest : public SpecBuilderTestBase<int> {
 
     co_await addConstraint(
         "constraint0", constraint, policy, 100, 10000, tuplePosIfBroken);
+  }
+
+  folly::coro::Task<void> addMovesInProgressConstraint(
+      const std::string &name,
+      const entities::Map<std::string, std::string> &destinations) {
+    interface::MovesInProgressSpec spec;
+    spec.name() = name;
+    for (const auto &[objectName, containerName] : destinations) {
+      interface::MoveInProgress move;
+      move.objName() = objectName;
+      move.toContainer() = containerName;
+      spec.moves()->push_back(std::move(move));
+    }
+
+    interface::ConstraintSpecs constraint;
+    constraint.movesInProgressSpec() = std::move(spec);
+    co_await addConstraint(name, constraint,
+                           interface::ConstraintPolicy::DEFAULT, 100, 10000, 0);
   }
 
   static void verifyGlobalObjective(
@@ -785,6 +804,36 @@ CO_TEST_P(MaterializerTest, UpdatesInInitialAssignment) {
         expectedAssignment[containerId],
         std::set<entities::ObjectId>(objects.begin(), objects.end()));
   }
+}
+
+CO_TEST_P(MaterializerTest, ConflictingUpdatesInInitialAssignment) {
+  co_await addMovesInProgressConstraint("constraint0", {{"task0", "host1"}});
+  co_await addMovesInProgressConstraint("constraint1", {{"task0", "host2"}});
+
+  const auto universe = buildUniverse();
+  REBALANCER_EXPECT_RUNTIME_ERROR_CONTAINS(
+      getMaterializedProblem(universe, MaterializerTest::GetParam()),
+      "Object can be fixed to only one container");
+}
+
+CO_TEST_P(MaterializerTest, CompatibleUpdatesInInitialAssignment) {
+  co_await addMovesInProgressConstraint(
+      "constraint0", {{"task0", "host2"}, {"task1", "host0"}});
+  co_await addMovesInProgressConstraint(
+      "constraint1", {{"task0", "host2"}, {"task2", "host1"}});
+
+  const auto universe = buildUniverse();
+  const auto materialized =
+      getMaterializedProblem(universe, MaterializerTest::GetParam());
+  const auto &assignment = materialized->updatedInitialAssignment;
+
+  ASSERT_EQ(3, assignment.size());
+  EXPECT_EQ(std::vector<entities::ObjectId>{task(1)},
+            assignment.at(containerId("host0")));
+  EXPECT_EQ(std::vector<entities::ObjectId>{task(2)},
+            assignment.at(containerId("host1")));
+  EXPECT_EQ(std::vector<entities::ObjectId>{task(0)},
+            assignment.at(containerId("host2")));
 }
 
 CO_TEST_P(MaterializerTest, FixedObjects) {
