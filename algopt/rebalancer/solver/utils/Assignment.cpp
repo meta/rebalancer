@@ -220,15 +220,6 @@ bool Assignment::isIndexedByEquivalentSets(
       indexedEquivalenceSetsKey_ == equivalenceSets.getKey();
 }
 
-const AssignmentIndexedByEquivSet&
-Assignment::maybeBuildAndGetObjectsIndexedByEquivSets(
-    const EquivalenceSets& equivalenceSets) {
-  if (!isIndexedByEquivalentSets(equivalenceSets)) {
-    buildIndexByEquivalentSets(equivalenceSets);
-  }
-  return *containerToEquivSetsToObjects_;
-}
-
 const AssignmentIndexedByEquivSet& Assignment::getObjectsIndexedByEquivSets(
     const EquivalenceSets& equivalenceSets) const {
   if (!containerToEquivSetsToObjects_) {
@@ -329,9 +320,33 @@ void Assignment::buildIndexByEquivalentSetsAndPartition(
       partitionId,
       AssignmentIndexedByEquivSetAndGroupId(
           containerToObjectsDynamic_, getObjectIdxFunc));
+  indexedEquivalenceSetsKey_ = equivalenceSets.getKey();
 
   XLOG(INFO) << "Built assignment index by equivalence sets and partition "
              << universe.getEntityName(partitionId);
+}
+
+void Assignment::buildAllIndexesByEquivalentSets(
+    const entities::Universe& universe,
+    const EquivalenceSets& equivalenceSets) {
+  if (indexedEquivalenceSetsKey_ == equivalenceSets.getKey()) {
+    if (!containerToEquivSetsToObjects_) {
+      buildIndexByEquivalentSets(equivalenceSets);
+    }
+    return;
+  }
+  buildIndexByEquivalentSets(equivalenceSets);
+  // Collected first because a rebuild replaces the index's entry in the map.
+  std::vector<entities::PartitionId> partitionIds;
+  partitionIds.reserve(partitionToPerContainerIndexByEquivSetAndGroups_.size());
+  for (const auto& [partitionId, _] :
+       partitionToPerContainerIndexByEquivSetAndGroups_) {
+    partitionIds.push_back(partitionId);
+  }
+  for (const auto partitionId : partitionIds) {
+    buildIndexByEquivalentSetsAndPartition(
+        universe, equivalenceSets, partitionId);
+  }
 }
 
 const AssignmentIndexedByEquivSetAndGroupId&

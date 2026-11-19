@@ -50,8 +50,8 @@ class MockSwapMoveType : public SwapMoveType {
       MoveStatsAggregator& stats) {
     // CoreLocalSearchSolve builds the index when the stage starts
     auto& problem = evaluator.getProblem();
-    problem.assignment.maybeBuildAndGetObjectsIndexedByEquivSets(
-        problem.getEquivalenceSets());
+    problem.assignment.buildAllIndexesByEquivalentSets(
+        problem.getUniverse(), problem.getEquivalenceSets());
     return SwapMoveType::exploreSwappingHotObjectWithObjectsInColdContainer(
         evaluator, hotContainer, hotObject, coldContainer, stats);
   }

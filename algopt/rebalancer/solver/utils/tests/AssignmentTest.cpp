@@ -198,6 +198,46 @@ TEST_F(AssignmentTest, DistinctObjectsOfContainerWithoutObjectsAreEmpty) {
           .empty());
 }
 
+CO_TEST_F(AssignmentTest, AllEquivalenceIndexesFollowSetsWithAnotherKey) {
+  const entities::Map<std::string, std::vector<std::string>> initialAssignment =
+      {{{"host0", {"task0", "task1"}}}};
+  setInitialAssignment(initialAssignment);
+  const entities::Map<std::string, std::vector<std::string>> groupToObjects = {
+      {{"all", {"task0", "task1"}}}};
+  co_await addPartition("all", groupToObjects);
+  const auto universe = buildUniverse();
+  Assignment assignment(universe->getContainers().getInitialAssignment());
+  const auto allPartitionId = partitionId("all");
+  EquivalenceSets oneSet(*universe, "one_set");
+  oneSet.finalize();
+  // A key stands for the sets' content, so sets with oneSet's key keep the
+  // indexes built from oneSet.
+  EquivalenceSets twoSetsWithOneSetsKey(*universe, "one_set");
+  twoSetsWithOneSetsKey.mappingMerge(
+      PackerMap<entities::ObjectId, int>{{task(0), 0}, {task(1), 1}});
+  EquivalenceSets twoSets(*universe, "two_sets");
+  twoSets.mappingMerge(
+      PackerMap<entities::ObjectId, int>{{task(0), 0}, {task(1), 1}});
+  const auto numIndexedSets = [&]() {
+    return assignment.getObjectsIndexedByEquivSetsAndPartition(allPartitionId)
+        .getContainerObjects(host(0))
+        .size();
+  };
+
+  assignment.buildIndexByEquivalentSetsAndPartition(
+      *universe, oneSet, allPartitionId);
+  EXPECT_EQ(1, numIndexedSets());
+  assignment.buildAllIndexesByEquivalentSets(*universe, twoSetsWithOneSetsKey);
+  EXPECT_EQ(1, numIndexedSets());
+  assignment.buildAllIndexesByEquivalentSets(*universe, twoSets);
+  EXPECT_EQ(2, numIndexedSets());
+  EXPECT_EQ(
+      2,
+      assignment.getObjectsIndexedByEquivSets(twoSets)
+          .getContainerObjects(host(0))
+          .size());
+}
+
 CO_TEST_F(AssignmentTest, IndexedObjects) {
   const entities::Map<std::string, std::vector<std::string>> initialAssignment =
       {{

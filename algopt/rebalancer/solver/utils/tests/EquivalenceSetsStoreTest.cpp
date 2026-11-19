@@ -422,8 +422,9 @@ TEST_F(EquivalenceSetsStoreTest, AssignmentIndexFollowsInitializedSets) {
   auto problem = makeProblem();
   auto& store = problem.getEquivalenceSetsStore();
   const auto numDistinctObjects = [&]() {
-    return problem.assignment
-        .maybeBuildAndGetObjectsIndexedByEquivSets(store.get())
+    problem.assignment.buildAllIndexesByEquivalentSets(
+        problem.getUniverse(), store.get());
+    return problem.assignment.getObjectsIndexedByEquivSets(store.get())
         .getContainerObjects(container(0))
         .size();
   };

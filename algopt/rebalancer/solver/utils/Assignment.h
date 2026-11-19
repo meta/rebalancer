@@ -107,13 +107,10 @@ class Assignment {
 
   // APIs for building and accessing object indices
   // Note that these indices are only built over dynamic objects
-  // The equivalence-set index is tied to EquivalenceSets::getKey(); sets with
-  // another key rebuild it.
+  // The indexes by equivalence sets (1 and 2 below) share the
+  // EquivalenceSets::getKey() of the sets they were built from.
   void buildIndexByEquivalentSets(const EquivalenceSets& equivalenceSets);
   bool isIndexedByEquivalentSets(const EquivalenceSets& equivalenceSets) const;
-  // Builds the index if it is missing or was built from other sets.
-  const AssignmentIndexedByEquivSet& maybeBuildAndGetObjectsIndexedByEquivSets(
-      const EquivalenceSets& equivalenceSets);
   // These throw unless the index was built from sets with the same key.
   const AssignmentIndexedByEquivSet& getObjectsIndexedByEquivSets(
       const EquivalenceSets& equivalenceSets) const;
@@ -131,6 +128,12 @@ class Assignment {
       const entities::Universe& universe,
       const EquivalenceSets& equivalenceSets,
       entities::PartitionId partitionId);
+  // Builds the index by equivalence sets if it is missing. For sets with
+  // another key than the indexes were built from, rebuilds it and every index
+  // by equivalence sets and partition built so far.
+  void buildAllIndexesByEquivalentSets(
+      const entities::Universe& universe,
+      const EquivalenceSets& equivalenceSets);
   const AssignmentIndexedByEquivSetAndGroupId&
   getObjectsIndexedByEquivSetsAndPartition(
       entities::PartitionId partitionId) const;
@@ -163,7 +166,8 @@ class Assignment {
   // the set of equivalent objects present at any given time in a container.
   std::optional<AssignmentIndexedByEquivSet> containerToEquivSetsToObjects_ =
       std::nullopt;
-  // EquivalenceSets::getKey() of the sets the index above was built from.
+  // EquivalenceSets::getKey() of the sets the indexes by equivalence sets (1
+  // and 2) were built from.
   std::string indexedEquivalenceSetsKey_;
   // 2. EquivSetId -> GroupId -> Objects  (for every container)
   // Can be built for more than one partition
