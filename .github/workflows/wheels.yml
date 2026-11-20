@@ -60,7 +60,7 @@ jobs:
           cibw_image: quay.io/pypa/manylinux_2_28_x86_64
           timeout_minutes: 60
         - os: macos
-          runs_on: macos-14-xlarge
+          runs_on: macos-15-xlarge
           cibw_archs: arm64
           timeout_minutes: 60
     steps:
@@ -102,8 +102,8 @@ jobs:
         CIBW_BEFORE_ALL_LINUX: bash tools/wheels/before_all_linux.sh
 
         # macOS environment:
-        #   * MACOSX_DEPLOYMENT_TARGET=14.0 -- Homebrew on macos-14-xlarge
-        #     ships bottles compiled with target 14.0 (Sonoma). delocate
+        #   * MACOSX_DEPLOYMENT_TARGET=15.0 -- Homebrew on macos-15-xlarge
+        #     ships bottles compiled with target 15.0 (Sequoia). delocate
         #     refuses to bundle those into a wheel announcing an older target,
         #     so we pin to the highest target any bundled dylib advertises.
         #     Decision (2026-05-08, autonomous):
@@ -112,9 +112,9 @@ jobs:
         #       icu/etc. into the getdeps tree instead of relying on Homebrew
         #       bottles. Substantial extra compile time and a different
         #       fragility surface. Not worth it pre-1.0.
-        #       Rejected -- shipping wheels per OS minor (11/12/13/14). No
+        #       Rejected -- shipping wheels per OS minor (11/12/13/14/15). No
         #       other Python project does this for marginal coverage gains.
-        #     Cost: wheel only installs on macOS 14+ (Sonoma, Sept 2023+).
+        #     Cost: wheel only installs on macOS 15+ (Sequoia, Sept 2024+).
         #     Older users can build from sdist or wait until source-built
         #     deps land.
         #   * CC/CXX -> Homebrew LLVM clang for C++23 features (static_assert
@@ -124,7 +124,7 @@ jobs:
         #     search path so bare -licudata / -licuuc / -licui18n flags pulled
         #     in transitively by Boost can be resolved.
         CIBW_ENVIRONMENT_MACOS: >-
-          MACOSX_DEPLOYMENT_TARGET=14.0
+          MACOSX_DEPLOYMENT_TARGET=15.0
           CC=/opt/homebrew/opt/llvm/bin/clang
           CXX=/opt/homebrew/opt/llvm/bin/clang++
           LIBRARY_PATH=/opt/homebrew/opt/icu4c@78/lib
