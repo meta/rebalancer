@@ -19,7 +19,9 @@
 #include "algopt/rebalancer/solver/summary/metrics/GroupRoutingLatencyMetrics.h"
 #include "algopt/rebalancer/solver/summary/metrics/tests/MetricsTestBase.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
+#endif
 
 #include <boost/iterator/iterator_facade.hpp>
 #include <fmt/core.h>

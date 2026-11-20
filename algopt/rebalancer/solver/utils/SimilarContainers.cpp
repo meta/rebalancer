@@ -19,7 +19,9 @@
 #include "algopt/rebalancer/solver/utils/ContainerPotential.h"
 #include "algopt/rebalancer/solver/utils/Util.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
+#endif
 
 #include <fmt/core.h>
 #include <fmt/format.h>

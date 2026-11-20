@@ -24,7 +24,9 @@
 #include "algopt/rebalancer/solver/utils/ProblemConfigs.h"
 #include "algopt/rebalancer/solver/utils/Util.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
+#endif
 
 #include <boost/iterator/iterator_facade.hpp>
 #include <folly/container/MapUtil.h>

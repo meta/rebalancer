@@ -22,7 +22,9 @@
 #include "algopt/rebalancer/solver/utils/OneObjectPerGroup.h"
 #include "algopt/rebalancer/solver/utils/Util.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
+#endif
 
 #include "gtest/gtest.h"
 #include <boost/iterator/iterator_facade.hpp>

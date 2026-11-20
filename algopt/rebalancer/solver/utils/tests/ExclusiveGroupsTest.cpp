@@ -16,8 +16,10 @@
 #include "algopt/rebalancer/solver/utils/Util.h"
 #include "algopt/rebalancer/tests/SolverTestUtils.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
 #include "multifeed/hash/QuickHashMap.h"
+#endif
 
 #include <gtest/gtest.h>
 

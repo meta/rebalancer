@@ -638,4 +638,10 @@ template class FixedSrcDstMultiMoveType<interface::FixedSrcMultiMoveTypeSpec>;
 template class FixedSrcDstMultiMoveType<interface::FixedDestMultiMoveTypeSpec>;
 template class FixedSrcDstMultiMoveType<
     interface::FixedDestSwapMultiMoveTypeSpec>;
+template class FixedSrcDstMoveCandidateGenerator<
+    interface::FixedSrcMultiMoveTypeSpec>;
+template class FixedSrcDstMoveCandidateGenerator<
+    interface::FixedDestMultiMoveTypeSpec>;
+template class FixedSrcDstMoveCandidateGenerator<
+    interface::FixedDestSwapMultiMoveTypeSpec>;
 } // namespace facebook::rebalancer

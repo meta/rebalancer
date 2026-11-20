@@ -22,8 +22,10 @@
 #include "algopt/rebalancer/solver/utils/IndexedAssignment.h"
 #include "algopt/rebalancer/solver/utils/ObjectStore.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
 #include "multifeed/hash/QuickHashSet.h"
+#endif
 
 #include <boost/iterator/iterator_categories.hpp>
 #include <boost/iterator/iterator_facade.hpp>

@@ -47,7 +47,9 @@
 #include "algopt/rebalancer/solver/utils/Util.h"
 #include "algopt/rebalancer/tests/SolverTestUtils.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
+#endif
 
 #include "gtest/gtest.h"
 #include <boost/iterator/iterator_facade.hpp>
