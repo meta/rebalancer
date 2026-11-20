@@ -16,6 +16,7 @@
 
 #include <folly/lang/SafeAssert.h>
 
+#include <algorithm>
 #include <atomic>
 #include <bit>
 #include <cstddef>

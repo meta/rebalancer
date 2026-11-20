@@ -17,7 +17,9 @@
 #include "algopt/rebalancer/entities/Identifiers.h"
 #include "algopt/rebalancer/entities/Set.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/QuickHashSet.h"
+#endif
 
 #include <stdexcept>
 #include <utility>

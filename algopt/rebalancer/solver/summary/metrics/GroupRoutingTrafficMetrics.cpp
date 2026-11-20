@@ -19,7 +19,9 @@
 #include "algopt/rebalancer/solver/expressions/GroupRoutingRing.h"
 #include "algopt/rebalancer/solver/utils/TrafficTable.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/QuickHashMap.h"
+#endif
 
 #include <folly/container/F14Map.h>
 #include <folly/lang/Assume.h>
