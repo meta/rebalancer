@@ -20,7 +20,9 @@
 #include "algopt/rebalancer/solver/utils/Change.h"
 #include "algopt/rebalancer/solver/utils/ChangeSet.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
+#endif
 
 #include <boost/iterator/iterator_facade.hpp>
 #include <folly/container/F14Map.h>

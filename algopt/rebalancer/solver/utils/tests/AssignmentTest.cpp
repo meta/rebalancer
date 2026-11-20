@@ -22,9 +22,11 @@
 #include "algopt/rebalancer/solver/utils/equivalence_sets/EquivalenceSets.h"
 #include "algopt/rebalancer/solver/utils/Util.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
 #include "multifeed/hash/QuickHashMap.h"
 #include "multifeed/hash/QuickHashSet.h"
+#endif
 
 #include "gtest/gtest.h"
 #include <boost/iterator/iterator_facade.hpp>

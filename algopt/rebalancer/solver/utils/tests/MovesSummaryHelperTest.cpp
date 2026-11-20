@@ -27,7 +27,9 @@
 #include "algopt/rebalancer/solver/utils/Precision.h"
 #include "algopt/rebalancer/solver/utils/Problem.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
+#endif
 
 #include <boost/iterator/iterator_facade.hpp>
 #include <fmt/core.h>

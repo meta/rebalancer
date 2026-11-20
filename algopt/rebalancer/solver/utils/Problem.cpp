@@ -58,9 +58,11 @@
 #include "algopt/rebalancer/solver/utils/Util.h"
 #include "algopt/rebalancer/treeprof/EventRecorder.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
 #include "multifeed/hash/QuickHashMap.h"
 #include "multifeed/hash/QuickHashSet.h"
+#endif
 
 #include <boost/iterator/iterator_facade.hpp>
 #include <fmt/core.h>
