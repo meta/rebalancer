@@ -449,7 +449,7 @@ folly::F14FastSet<ConstGenericVarPtr> GenericProblemImpl::getVars() const {
   return vars;
 }
 
-const folly::F14FastSet<std::shared_ptr<GenericConstraintImpl>>&
+folly::F14FastSet<std::shared_ptr<GenericConstraintImpl>>
 GenericProblemImpl::getConstraints() const {
   return *constraints_.rlock();
 }

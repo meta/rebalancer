@@ -99,8 +99,11 @@ class GenericProblemImpl : public ProblemImpl {
   // expensive: iterates over all the constraints
   folly::F14FastSet<ConstGenericVarPtr> getVars() const;
 
-  const folly::F14FastSet<std::shared_ptr<GenericConstraintImpl>>&
-  getConstraints() const;
+  // Returns a copy: constraints_ is a Synchronized set that deleteConstraint()
+  // can erase from concurrently, so a reference into it would only be valid
+  // while the internal lock is held.
+  folly::F14FastSet<std::shared_ptr<GenericConstraintImpl>> getConstraints()
+      const;
 
   std::shared_ptr<GenericExpressionImpl> getOnlyObjective() const;
 
