@@ -482,6 +482,7 @@ if(REBALANCER_BUILD_EXPLORER)
         ${_exp_cpp}/lib/GroupModel.cpp
         ${_exp_cpp}/lib/LoadModel.cpp
         ${_exp_cpp}/lib/MetricsTabulator.cpp
+        ${_exp_cpp}/lib/TableStore.cpp
         ${_exp_cpp}/lib/Utils.cpp
         ${_exp_cpp}/server/ExplorerServerHandler.cpp
         ${_exp_cpp}/server/ModelServer.cpp

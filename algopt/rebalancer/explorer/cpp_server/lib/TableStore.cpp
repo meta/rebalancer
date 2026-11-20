@@ -7,6 +7,7 @@
 #include <fmt/core.h>
 #include <folly/CancellationToken.h>
 #include <folly/coro/WithCancellation.h>
+#include <folly/logging/xlog.h>
 
 #include <exception>
 #include <stdexcept>
