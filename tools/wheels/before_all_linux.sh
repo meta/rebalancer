@@ -39,6 +39,7 @@ ln -sf "$clang_dir/clang++" "$clang_dir/clang++-19"
 clang --version | head -1
 ld.lld --version
 
+bash tools/pin_dep_revs.sh
 bash tools/use_shared_glog.sh
 
 $PY build/fbcode_builder/getdeps.py --allow-system-packages \
