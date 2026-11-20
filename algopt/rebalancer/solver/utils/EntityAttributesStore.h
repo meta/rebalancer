@@ -17,7 +17,9 @@
 #include "algopt/rebalancer/entities/Map.h"
 #include "algopt/rebalancer/solver/utils/EntityAttributes.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
+#endif
 
 #include <boost/iterator/iterator_facade.hpp>
 #include <fmt/core.h>

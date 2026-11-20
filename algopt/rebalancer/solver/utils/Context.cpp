@@ -18,7 +18,9 @@
 #include "algopt/rebalancer/solver/utils/equivalence_sets/EquivalenceSets.h"
 #include "algopt/rebalancer/solver/utils/Util.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
+#endif
 
 #include <boost/iterator/iterator_facade.hpp>
 

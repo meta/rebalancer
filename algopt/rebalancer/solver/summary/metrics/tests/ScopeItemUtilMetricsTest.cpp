@@ -29,7 +29,9 @@
 #include "algopt/rebalancer/solver/utils/Context.h"
 #include "algopt/rebalancer/solver/utils/Util.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/QuickHashMap.h"
+#endif
 
 #include "gmock/gmock.h"
 #include <folly/container/F14Map.h>
