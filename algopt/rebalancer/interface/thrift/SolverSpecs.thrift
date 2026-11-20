@@ -168,6 +168,12 @@ struct RasHybridSolverSpec {
   // @fb-only: 11: list<resourcepools.RasLocalSearchStageSpec> localSearchStages = [];
   // If set, local search stops after this many moves in total, across all stages
   12: optional i32 stopAfterMoves;
+  // By local search stage name (RasLocalSearchStageSpec.name): the equivalence
+  // sets of that stage, which replace those of the search space partition and
+  // the goals and constraints rasLocalSearchMetadata splits it by. The other
+  // stages keep those. Only the stackable solve supports it, and not together
+  // with RasLocalSearchMetadata.groupOccupancySampling.
+  13: map<string, CustomEquivalenceSetConfig> customEquivalenceSetConfigPerStage;
 }
 
 struct HottestTraversalConfig {
