@@ -39,10 +39,25 @@ ln -sf "$clang_dir/clang++" "$clang_dir/clang++-19"
 clang --version | head -1
 ld.lld --version
 
+bash tools/pin_dep_revs.sh
+bash tools/use_shared_glog.sh
+
 $PY build/fbcode_builder/getdeps.py --allow-system-packages \
     install-system-deps --recursive rebalancer
 $PY build/fbcode_builder/getdeps.py --allow-system-packages \
     install-system-deps --recursive patchelf
+
+# getdeps satisfies boost on EL 8 with EPEL's boost169 packages, which ship no
+# CMake package config. folly finds Boost only through that config, so it
+# fetches its own Boost instead and turns its install rules off, failing the
+# folly install. Remove boost169 so getdeps builds Boost from source, as it
+# does on Ubuntu.
+dnf remove -y 'boost169*'
+# The container's CMake 4 rejects Boost 1.83's libs/predef, which still asks
+# for cmake_minimum_required below 3.5. folly sets the same floor when it
+# builds Boost itself.
+export CMAKE_POLICY_VERSION_MINIMUM=3.10
+
 $PY build/fbcode_builder/getdeps.py --allow-system-packages \
     build --build-type RelWithDebInfo --src-dir=. --no-tests rebalancer \
     --extra-cmake-defines \

@@ -350,6 +350,11 @@ message(STATUS "All source files: ${all_cpp_files}")
 list(FILTER all_cpp_files EXCLUDE REGEX
     "rebalancer/explorer/")
 
+# These tests exercise the Xpress C++ SDK directly and need Meta's internal
+# license setup, so they cannot build outside fbcode.
+list(FILTER all_cpp_files EXCLUDE REGEX
+    "algopt/lp/test/xpress_sdk(_creator)?/")
+
 # Optionally exclude website reference examples (broken/WIP)
 if(NOT REBALANCER_BUILD_WEBSITE_EXAMPLES)
     list(FILTER all_cpp_files EXCLUDE REGEX "examples/website/")

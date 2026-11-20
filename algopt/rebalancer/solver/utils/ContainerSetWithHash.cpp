@@ -16,7 +16,9 @@
 #include <algopt/rebalancer/solver/utils/ContainerSetWithHash.h>
 #include <algopt/rebalancer/solver/utils/Util.h>
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/QuickHashSet.h"
+#endif
 
 #include <boost/iterator/iterator_facade.hpp>
 #include <folly/hash/Hash.h>

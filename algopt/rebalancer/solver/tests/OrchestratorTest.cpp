@@ -31,8 +31,10 @@
 #include "algopt/rebalancer/solver/utils/Context.h"
 #include "algopt/rebalancer/solver/utils/Util.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
 #include "multifeed/hash/QuickHashSet.h"
+#endif
 
 #include <folly/container/F14Map.h>
 #include <folly/container/F14Set.h>

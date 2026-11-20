@@ -27,7 +27,9 @@
 #include "algopt/rebalancer/solver/summary/metrics/ScopeItemUtilMetrics.h"
 #include "algopt/rebalancer/solver/utils/Context.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/QuickHashMap.h"
+#endif
 
 #include <boost/iterator/iterator_categories.hpp>
 #include <boost/iterator/iterator_facade.hpp>

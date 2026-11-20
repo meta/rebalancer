@@ -103,7 +103,7 @@ ParallelExecutionSelector::ParallelExecutionSelector(
       strategy_ = kAbbaRound.front();
       batchingOptions_ =
           makeBatchingOptions(*config->autoExecution()->batching());
-      experiment_.emplace();
+      experiment_ = Experiment{};
       return;
     case interface::ParallelExecutionConfig::Type::__EMPTY__:
       throw std::invalid_argument("Parallel execution config cannot be empty");

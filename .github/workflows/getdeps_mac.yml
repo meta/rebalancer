@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14-xlarge
+    runs-on: macos-15-xlarge
     timeout-minutes: 60
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
@@ -32,6 +32,9 @@ jobs:
         sysctl -n hw.memsize | awk '{print "Memory: " $1/1073741824 " GB"}'
 
     - uses: actions/checkout@v6
+
+    - name: Pin folly and its RPC stack
+      run: bash tools/pin_dep_revs.sh
 
     - name: Set up sccache
       uses: mozilla-actions/sccache-action@v0.0.10
