@@ -17,7 +17,9 @@
 #include "algopt/rebalancer/entities/Identifiers.h"
 #include "algopt/rebalancer/solver/utils/Change.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
+#endif
 
 #include <boost/iterator/iterator_facade.hpp>
 #include <folly/container/MapUtil.h>

@@ -17,7 +17,11 @@
 #include <folly/container/irange.h>
 #include <folly/small_vector.h>
 
+#include <cstddef>
+#include <functional>
 #include <iterator>
+#include <utility>
+#include <vector>
 
 namespace facebook::rebalancer {
 /**

@@ -30,7 +30,9 @@
 #include "algopt/rebalancer/treeprof/Event.h"
 #include "algopt/rebalancer/treeprof/EventRecorder.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/QuickHashMap.h"
+#endif
 
 #include <boost/iterator/iterator_facade.hpp>
 #include <fmt/core.h>

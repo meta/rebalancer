@@ -17,8 +17,10 @@
 #include "algopt/rebalancer/entities/Identifiers.h"
 #include "algopt/rebalancer/solver/utils/Util.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/HeterogeneousAccess.h"
 #include "multifeed/hash/QuickHashSet.h"
+#endif
 
 #include <fmt/core.h>
 

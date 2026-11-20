@@ -25,7 +25,9 @@
 #include "algopt/rebalancer/entities/Universe.h"
 #include "algopt/rebalancer/solver/utils/Util.h"
 
+#ifndef REBALANCER_OSS_BUILD
 #include "multifeed/hash/QuickHashSet.h"
+#endif
 
 #include <fmt/core.h>
 #include <folly/container/F14Set.h>
