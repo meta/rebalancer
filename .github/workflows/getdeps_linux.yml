@@ -30,6 +30,9 @@ jobs:
 
     - uses: actions/checkout@v6
 
+    - name: Pin folly and its RPC stack
+      run: bash tools/pin_dep_revs.sh
+
     - name: Build rebalancer against a shared glog
       run: bash tools/use_shared_glog.sh
 
