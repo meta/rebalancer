@@ -17,6 +17,11 @@
 #include <folly/container/F14Set.h>
 #include <gtest/gtest.h>
 
+#include <set>
+#include <string>
+#include <type_traits>
+#include <vector>
+
 namespace facebook::rebalancer::packer::tests {
 TEST(
     MultiCollectionCartesianProductTest,

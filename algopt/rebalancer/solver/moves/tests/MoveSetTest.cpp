@@ -17,6 +17,7 @@
 #include "algopt/rebalancer/solver/moves/MoveSet.h"
 #include "algopt/rebalancer/solver/tests/IdConverterTestUtils.h"
 
+#include <fmt/core.h>
 #include <folly/container/irange.h>
 #include <gtest/gtest.h>
 
@@ -102,11 +103,20 @@ TEST(MoveSetTest, ToString) {
 
   const auto universe = builder.buildUniverse();
   const auto result = moves.toString(*universe);
+  // Container ids follow the iteration order of the initial assignment map,
+  // which differs between the internal and OSS map implementations.
   EXPECT_EQ(
-      "[\n"
-      "  Object = task1 (id: 0), Source Container = host1 (id: 0), Destination Container = host3 (id: 1)\n"
-      "  Object = task2 (id: 1), Source Container = host2 (id: 2), Destination Container = host3 (id: 1)\n"
-      "]",
+      fmt::format(
+          "[\n"
+          "  Object = task1 (id: {}), Source Container = host1 (id: {}), Destination Container = host3 (id: {})\n"
+          "  Object = task2 (id: {}), Source Container = host2 (id: {}), Destination Container = host3 (id: {})\n"
+          "]",
+          builder.object("task1"),
+          builder.container("host1"),
+          builder.container("host3"),
+          builder.object("task2"),
+          builder.container("host2"),
+          builder.container("host3")),
       result);
 }
 
