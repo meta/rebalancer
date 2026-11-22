@@ -26,8 +26,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 COPY build/fbcode_builder /src/build/fbcode_builder
-COPY tools/pin_dep_revs.sh tools/use_shared_glog.sh /src/tools/
-RUN bash /src/tools/pin_dep_revs.sh && bash /src/tools/use_shared_glog.sh
+COPY build/deps/github_hashes /src/build/deps/github_hashes
+COPY tools/use_shared_glog.sh /src/tools/
+RUN bash /src/tools/use_shared_glog.sh
 WORKDIR /src
 
 # System deps for rebalancer-explorer (the superset target; the examples need
@@ -59,9 +60,8 @@ RUN python3 build/fbcode_builder/getdeps.py \
       --extra-cmake-defines '{"CMAKE_C_COMPILER":"gcc","CMAKE_CXX_COMPILER":"g++","BUILD_TESTS":"OFF"}'
 
 COPY . /src
-# COPY . restores the exported build/ files, so pin and patch them again to keep
-# the dependency hashes the deps above were built with.
-RUN bash /src/tools/pin_dep_revs.sh && bash /src/tools/use_shared_glog.sh
+# The source copy restores the exported manifests, so request shared glog again.
+RUN bash /src/tools/use_shared_glog.sh
 
 # Build the project + examples (--no-deps); rebuilds on source changes. Examples
 # come from the manifest's [cmake.defines.test=on] EXAMPLES=ON, enabled by omitting
