@@ -529,9 +529,12 @@ void OptimalSolver::solve(
 
   applyChanges(p, changes);
 
+  const auto& lpProblem = p.lp_store.getLpProblem();
   auto solverSummary = SolverSummary{
       .solverType = SolverType::OPTIMAL,
-      .solverPackage = std::string(p.lp_store.getLpProblem().backendName()),
+      .solverPackage = std::string(lpProblem.backendName()),
+      .solverParameters = lpProblem.getSetParameters(),
+      .solverVersion = lpProblem.getSolverVersion(),
       .endReason = endReason,
       .auxInfo = std::to_string(timer.getSeconds()),
   };

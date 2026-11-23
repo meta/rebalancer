@@ -94,6 +94,11 @@ struct SolverSummary {
   // by MIP solvers.
   std::optional<std::string> solverPackage = std::nullopt;
 
+  // Parameters set on the solver library and the library's version. Only set
+  // by MIP solvers; see algopt::lp::ProblemImpl::getSetParameters().
+  std::optional<std::map<std::string, double>> solverParameters = std::nullopt;
+  std::optional<std::string> solverVersion = std::nullopt;
+
   interface::EndReason endReason;
   /* some endReason has detailed numerical information,
    * such as move_limit, time_limit etc,
