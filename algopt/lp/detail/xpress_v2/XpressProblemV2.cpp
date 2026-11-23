@@ -141,8 +141,8 @@ void XpressV2NameBuffer::detach() {
 XpressProblemV2::XpressProblemV2() {
   setTolerances(Tolerances{});
   const int scaling = problem_.getIntControl(XPRS_SCALING);
-  problem_.setIntControl(
-      XPRS_SCALING, scaling | XPRS_SCALING_SIMPLEX_OBJECTIVE_SCALING);
+  setParameter(
+      "XPRS_SCALING", scaling | XPRS_SCALING_SIMPLEX_OBJECTIVE_SCALING);
 }
 XpressProblemV2::~XpressProblemV2() {
   names_->detach();
@@ -346,7 +346,7 @@ void XpressProblemV2::solveForObjectiveAt(
     // Pass the limit through as-is. A negated limit -- the "stop even without
     // a solution" convention -- is rejected outright by Xpress 9.9 with
     // "Invalid value for control".
-    problem_.setDblControl(XPRS_TIMELIMIT, timeLimit.value());
+    setParameter("XPRS_TIMELIMIT", timeLimit.value());
   }
 
   if (multiObjConfig_) {
@@ -516,7 +516,7 @@ thrift::ProblemAttributes XpressProblemV2::getProblemAttributes() {
 
 void XpressProblemV2::disableLogs() {
   logsDisabled_ = true;
-  problem_.setIntControl(XPRS_OUTPUTLOG, 0);
+  setParameter("XPRS_OUTPUTLOG", 0);
 }
 
 void XpressProblemV2::setParameter(const std::string& name, double value) {
@@ -563,14 +563,12 @@ double XpressProblemV2::getParameter(const std::string& name) {
 }
 
 void XpressProblemV2::setTolerances(const Tolerances& tol) {
-  // Set the controls directly by code rather than going through the
-  // name-to-code lookup table; the typed problem inherits the raw control API.
-  problem_.setDblControl(XPRS_FEASTOL, tol.constraint);
-  problem_.setDblControl(XPRS_MIPTOL, tol.integer);
-  problem_.setDblControl(XPRS_MIPRELSTOP, tol.relgap);
-  problem_.setDblControl(XPRS_MIPABSSTOP, tol.absgap);
-  problem_.setDblControl(XPRS_MIPRELCUTOFF, tol.relcut);
-  problem_.setDblControl(XPRS_MIPADDCUTOFF, tol.abscut);
+  setParameter("XPRS_FEASTOL", tol.constraint);
+  setParameter("XPRS_MIPTOL", tol.integer);
+  setParameter("XPRS_MIPRELSTOP", tol.relgap);
+  setParameter("XPRS_MIPABSSTOP", tol.absgap);
+  setParameter("XPRS_MIPRELCUTOFF", tol.relcut);
+  setParameter("XPRS_MIPADDCUTOFF", tol.abscut);
 }
 
 Tolerances XpressProblemV2::getTolerances() {

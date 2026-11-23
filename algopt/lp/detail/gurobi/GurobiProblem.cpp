@@ -540,30 +540,32 @@ void GurobiProblem::setMultiObjectiveParameter(
     const auto paramValue =
         algopt::common::thriftUtils::getObjectiveValue(index, val);
     if (env) {
-      auto intParam = getIntParamCode(key);
-      if (intParam) {
-        const GRB_IntParam paramName = *intParam;
-        (*env)->set(paramName, paramValue);
-        XLOG(INFO) << fmt::format(
-            "Updating Gurobi param {} to {} for objective at {}",
-            key,
-            (*env)->get(paramName),
-            index);
-      } else {
-        auto doubleParam = getDoubleParamCode(key);
-        if (doubleParam) {
-          const GRB_DoubleParam paramName = *doubleParam;
-          (*env)->set(paramName, paramValue);
-          XLOG(INFO) << fmt::format(
-              "Updating Gurobi param {} to {} for objective at {}",
-              key,
-              (*env)->get(paramName),
-              index);
-        }
-      }
+      setObjectiveParameter(**env, index, key, paramValue);
     } else {
       setParameter(key, paramValue);
     }
+  }
+}
+
+void GurobiProblem::setObjectiveParameter(
+    GRBEnv& env,
+    int index,
+    const std::string& name,
+    double value) {
+  if (const auto intParam = getIntParamCode(name)) {
+    env.set(*intParam, static_cast<int>(value));
+    XLOG(INFO) << fmt::format(
+        "Updating Gurobi param {} to {} for objective at {}",
+        name,
+        env.get(*intParam),
+        index);
+  } else if (const auto doubleParam = getDoubleParamCode(name)) {
+    env.set(*doubleParam, value);
+    XLOG(INFO) << fmt::format(
+        "Updating Gurobi param {} to {} for objective at {}",
+        name,
+        env.get(*doubleParam),
+        index);
   }
 }
 
@@ -1392,14 +1394,12 @@ void GurobiProblem::print(
   rethrowGurobiError(e);
 }
 
-void GurobiProblem::disableLogs() try {
-  model_.set(GRB_IntParam::GRB_IntParam_OutputFlag, 0);
-} catch (const GRBException& e) {
-  rethrowGurobiError(e);
+void GurobiProblem::disableLogs() {
+  setParameter("GRB_OutputFlag", 0);
 }
 
 void GurobiProblem::setTimeout(double solveTime) {
-  model_.set(GRB_DoubleParam::GRB_DoubleParam_TimeLimit, solveTime);
+  setParameter("GRB_TimeLimit", solveTime);
 }
 
 void GurobiProblem::addStartValue(
@@ -1523,7 +1523,7 @@ std::optional<IIS> GurobiProblem::getIIS() try {
         "Model status {} ({}) is ambiguous, trying to pinpoint actual value",
         status,
         kModelStatusCodes.at(status));
-    model_.set(GRB_IntParam_DualReductions, 0);
+    setParameter("GRB_DualReductions", 0);
     model_.reset();
     model_.optimize();
     status = model_.get(GRB_IntAttr::GRB_IntAttr_Status);

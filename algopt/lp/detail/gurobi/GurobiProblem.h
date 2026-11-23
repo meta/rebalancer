@@ -169,6 +169,13 @@ class GurobiProblem : public ProblemImpl {
   void setObjective(std::shared_ptr<const ExpressionImpl> expression);
   void setMultiObjective();
   void setTimeout(double solveTime);
+  // Sets a parameter on the environment of the multi-objective objective at
+  // `index`. Unknown names are ignored.
+  static void setObjectiveParameter(
+      GRBEnv& env,
+      int index,
+      const std::string& name,
+      double value);
   void setMultiObjectiveParameter(
       int pos,
       std::optional<GRBEnv*> env = std::nullopt);
