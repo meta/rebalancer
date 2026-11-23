@@ -24,6 +24,7 @@
 #include <algopt/rebalancer/algopt_common/Concepts.h>
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -161,6 +162,15 @@ class ProblemImpl {
 
   virtual double getParameter(const std::string& name) = 0;
   virtual void setParameter(const std::string& name, double value) = 0;
+  // Every parameter set through setParameter(), keyed by name, with the value
+  // the solver library received; per-objective multi-objective settings are
+  // keyed "<name>[obj<index>]". Parameters not listed are at the library's
+  // default, so with getSolverVersion() this determines every numeric setting.
+  // Empty for backends that do not record them.
+  virtual std::map<std::string, double> getSetParameters() const;
+  // Version of the solver library behind this problem (e.g. "14.0.0"), or
+  // empty if the backend does not report one.
+  virtual std::string getSolverVersion() const;
   virtual void setLogfile(const std::string& filename) = 0;
   virtual void saveToFile(const std::string& filename) = 0;
   // this ensures that the objective at pos is added before the model is written
@@ -379,6 +389,10 @@ class Problem {
 
   double getParameter(const std::string& name);
   void setParameter(const std::string& name, double value);
+  // See ProblemImpl::getSetParameters().
+  std::map<std::string, double> getSetParameters() const;
+  // See ProblemImpl::getSolverVersion().
+  std::string getSolverVersion() const;
 
   void setTolerances(const Tolerances& tol);
   Tolerances getTolerances();

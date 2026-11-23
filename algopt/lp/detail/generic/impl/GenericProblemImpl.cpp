@@ -216,6 +216,14 @@ double GenericProblemImpl::getParameter(const std::string& name) {
 void GenericProblemImpl::setParameter(const std::string& name, double value) {
   params_.emplace(name, value);
 }
+
+std::map<std::string, double> GenericProblemImpl::getSetParameters() const {
+  return problem_.getSetParameters();
+}
+
+std::string GenericProblemImpl::getSolverVersion() const {
+  return problem_.getSolverVersion();
+}
 void GenericProblemImpl::setTolerances(const Tolerances& tol) {
   tolerances_ = tol;
 }

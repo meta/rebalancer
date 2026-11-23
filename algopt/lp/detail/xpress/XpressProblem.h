@@ -25,7 +25,9 @@
 
 #include <folly/container/F14Map.h>
 
+#include <map>
 #include <optional>
+#include <string>
 
 namespace facebook::algopt::lp::detail {
 
@@ -73,6 +75,8 @@ class XpressProblem : public ProblemImpl {
 
   double getParameter(const std::string& name) override;
   void setParameter(const std::string& name, double value) override;
+  std::map<std::string, double> getSetParameters() const override;
+  std::string getSolverVersion() const override;
   void setTolerances(const Tolerances& tol) override;
   Tolerances getTolerances() override;
 
@@ -203,6 +207,8 @@ class XpressProblem : public ProblemImpl {
   bool modifiedSinceSolve_ = false;
   bool callbackAborted_ = false;
   bool loggingDisabled_ = false;
+  // Stores only the parameters that are explicitly set during a run.
+  std::map<std::string, double> setParamNameToValue_;
 
   std::optional<std::function<ProblemCallbackAction(ProblemCallbackData)>>
       callback_;

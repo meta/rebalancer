@@ -552,8 +552,10 @@ void GurobiProblem::setObjectiveParameter(
     int index,
     const std::string& name,
     double value) {
+  const auto key = fmt::format("{}[obj{}]", name, index);
   if (const auto intParam = getIntParamCode(name)) {
     env.set(*intParam, static_cast<int>(value));
+    setParamNameToValue_[key] = static_cast<int>(value);
     XLOG(INFO) << fmt::format(
         "Updating Gurobi param {} to {} for objective at {}",
         name,
@@ -561,6 +563,7 @@ void GurobiProblem::setObjectiveParameter(
         index);
   } else if (const auto doubleParam = getDoubleParamCode(name)) {
     env.set(*doubleParam, value);
+    setParamNameToValue_[key] = value;
     XLOG(INFO) << fmt::format(
         "Updating Gurobi param {} to {} for objective at {}",
         name,
@@ -1204,6 +1207,7 @@ void GurobiProblem::setParameter(const std::string& name, double value) try {
   if (intParam) {
     auto oldValue = model_.get(*intParam);
     model_.set(*intParam, static_cast<int>(value));
+    setParamNameToValue_[name] = static_cast<int>(value);
 
     XLOG(DBG) << fmt::format(
         "Updating Gurobi param {} from {} to {}", name, oldValue, value);
@@ -1214,6 +1218,7 @@ void GurobiProblem::setParameter(const std::string& name, double value) try {
   if (doubleParam) {
     auto oldValue = model_.get(*doubleParam);
     model_.set(*doubleParam, value);
+    setParamNameToValue_[name] = value;
 
     XLOG(DBG) << fmt::format(
         "Updating Gurobi param {} from {} to {}", name, oldValue, value);
@@ -1222,6 +1227,7 @@ void GurobiProblem::setParameter(const std::string& name, double value) try {
 
   if (isValidHiddenParam(name)) {
     model_.set(name, folly::to<std::string>(static_cast<int>(value)));
+    setParamNameToValue_[name] = static_cast<int>(value);
 
     XLOG(DBG) << fmt::format("Updating Gurobi param {} to {}", name, value);
     return;
@@ -1236,6 +1242,7 @@ void GurobiProblem::setParameter(const std::string& name, double value) try {
               "Unknown value {} for parameter {}", warmStartOverride, name));
     }
     warmStartType_ = *warmStartTypeOpt;
+    setParamNameToValue_[name] = warmStartOverride;
     XLOG(INFO) << fmt::format(
         "Updating gurobi warm start type to {}", warmStartOverride);
     return;
@@ -1244,6 +1251,18 @@ void GurobiProblem::setParameter(const std::string& name, double value) try {
   throw SolverError(fmt::format("Unknown parameter {}", name));
 } catch (const GRBException& e) {
   rethrowGurobiError(e);
+}
+
+std::map<std::string, double> GurobiProblem::getSetParameters() const {
+  return setParamNameToValue_;
+}
+
+std::string GurobiProblem::getSolverVersion() const {
+  int major = 0;
+  int minor = 0;
+  int technical = 0;
+  GRBversion(&major, &minor, &technical);
+  return fmt::format("{}.{}.{}", major, minor, technical);
 }
 
 void GurobiProblem::setTolerances(const Tolerances& tol) try {

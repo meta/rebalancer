@@ -71,8 +71,13 @@ class DecomposableProblem : public GenericProblemImpl {
    * allowedPartitions_ was unset */
   const folly::F14FastSet<PartitionId>& getAllowedPartitions() const;
 
+  // What the problem the last solve() realized and solved received.
+  std::map<std::string, double> getSetParameters() const override;
+
  private:
   std::optional<folly::F14FastSet<PartitionId>> allowedPartitions_;
+  // Parameters explicitly set on the problem the last solve() solved.
+  std::optional<std::map<std::string, double>> solvedParamNameToValue_;
 };
 
 } // namespace facebook::algopt::lp::detail

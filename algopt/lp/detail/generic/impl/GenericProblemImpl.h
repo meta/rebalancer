@@ -64,6 +64,10 @@ class GenericProblemImpl : public ProblemImpl {
 
   virtual double getParameter(const std::string& name) override;
   virtual void setParameter(const std::string& name, double value) override;
+  // What the realized problem received; parameters reach it when solve()
+  // realizes the problem.
+  std::map<std::string, double> getSetParameters() const override;
+  std::string getSolverVersion() const override;
 
   virtual void setLogfile(const std::string& filename) override;
   virtual void saveToFile(const std::string& filename) override;

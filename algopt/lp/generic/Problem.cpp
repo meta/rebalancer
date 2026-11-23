@@ -375,6 +375,14 @@ std::optional<uint32_t> ProblemImpl::getModelFingerprint() {
   return std::nullopt;
 }
 
+std::map<std::string, double> ProblemImpl::getSetParameters() const {
+  return {};
+}
+
+std::string ProblemImpl::getSolverVersion() const {
+  return {};
+}
+
 void ProblemImpl::saveToFileWithAllObjectives(const std::string& filename) {
   saveToFile(filename);
 }
@@ -553,6 +561,14 @@ double Problem::getParameter(const std::string& name) {
 
 void Problem::setParameter(const std::string& name, double value) {
   problem_->setParameter(name, value);
+}
+
+std::map<std::string, double> Problem::getSetParameters() const {
+  return problem_->getSetParameters();
+}
+
+std::string Problem::getSolverVersion() const {
+  return problem_->getSolverVersion();
 }
 
 void Problem::setTolerances(const Tolerances& tol) {

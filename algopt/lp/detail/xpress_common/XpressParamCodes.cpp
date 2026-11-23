@@ -16,8 +16,12 @@
 
 #ifdef REBALANCER_USE_XPRESS
 
+#include <folly/logging/xlog.h>
+
+#include <array>
 #include <map>
 #include <string_view>
+#include <vector>
 #include <xprs.h>
 
 namespace facebook::algopt::lp::detail::xpress_params {
@@ -459,6 +463,28 @@ std::optional<int> getDoubleParamCode(const std::string& name) {
   const auto it = kDoubleParamCodes.find(name);
   return it == kDoubleParamCodes.end() ? std::nullopt
                                        : std::optional<int>{it->second};
+}
+
+std::vector<std::string_view> getParamNames() {
+  std::vector<std::string_view> names;
+  names.reserve(kIntParamCodes.size() + kDoubleParamCodes.size());
+  for (const auto& [name, code] : kIntParamCodes) {
+    names.push_back(name);
+  }
+  for (const auto& [name, code] : kDoubleParamCodes) {
+    names.push_back(name);
+  }
+  return names;
+}
+
+std::string getXpressVersion() {
+  // XPRSgetversion needs a buffer of at least 16 characters.
+  std::array<char, 64> version{};
+  if (XPRSgetversion(version.data()) != 0) {
+    XLOG(WARN) << "Could not read the Xpress version";
+    return {};
+  }
+  return std::string(version.data());
 }
 
 } // namespace facebook::algopt::lp::detail::xpress_params

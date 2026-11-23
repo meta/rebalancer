@@ -543,13 +543,23 @@ void XpressProblemV2::setParameter(const std::string& name, double value) {
               value));
     }
     problem_.setIntControl(*code, static_cast<int>(value));
+    setParamNameToValue_[name] = static_cast<int>(value);
     return;
   }
   if (const auto code = xpress_params::getDoubleParamCode(name)) {
     problem_.setDblControl(*code, value);
+    setParamNameToValue_[name] = value;
     return;
   }
   throw SolverError(fmt::format("XpressProblemV2: unknown parameter {}", name));
+}
+
+std::map<std::string, double> XpressProblemV2::getSetParameters() const {
+  return setParamNameToValue_;
+}
+
+std::string XpressProblemV2::getSolverVersion() const {
+  return xpress_params::getXpressVersion();
 }
 
 double XpressProblemV2::getParameter(const std::string& name) {

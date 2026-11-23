@@ -23,6 +23,7 @@
 #include <folly/logging/xlog.h>
 
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <stdexcept>
 
@@ -95,6 +96,7 @@ folly::F14FastMap<ConstGenericVarPtr, double> DecomposableProblem::solve(
     XLOG(INFO) << fmt::format("MIP model saved as {}", *modelOutputFile);
   }
   p.solve(useSolverSpecificMultiObjectiveSolveIfAvailable);
+  solvedParamNameToValue_ = p.getSetParameters();
   status_ = p.getStatus();
   problemResultPerObjective_ = p.getResultPerObjective();
 
@@ -147,6 +149,12 @@ DecomposableProblem::getAllowedPartitions() const {
   }
   throw std::runtime_error(
       "Allowed partitions were not specified for this problem");
+}
+
+std::map<std::string, double> DecomposableProblem::getSetParameters() const {
+  return solvedParamNameToValue_.has_value()
+      ? *solvedParamNameToValue_
+      : GenericProblemImpl::getSetParameters();
 }
 
 } // namespace facebook::algopt::lp::detail

@@ -20,6 +20,8 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 // Resolves an Xpress control name ("XPRS_TIMELIMIT") to its integer code, so
 // callers can set controls by name. The tables live in XpressParamCodes.cpp;
@@ -30,6 +32,13 @@ namespace facebook::algopt::lp::detail::xpress_params {
 
 std::optional<int> getIntParamCode(const std::string& name);
 std::optional<int> getDoubleParamCode(const std::string& name);
+
+// Names of every numeric control of the linked Xpress version.
+std::vector<std::string_view> getParamNames();
+
+// Version string of the linked Xpress optimizer library, e.g. "48.01.01" for
+// Xpress 10.0; empty if Xpress does not report one.
+std::string getXpressVersion();
 
 } // namespace facebook::algopt::lp::detail::xpress_params
 

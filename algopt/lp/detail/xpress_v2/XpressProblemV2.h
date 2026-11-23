@@ -27,6 +27,7 @@
 #include <folly/container/F14Set.h>
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -107,6 +108,8 @@ class XpressProblemV2 : public ProblemImpl {
 
   double getParameter(const std::string& name) override;
   void setParameter(const std::string& name, double value) override;
+  std::map<std::string, double> getSetParameters() const override;
+  std::string getSolverVersion() const override;
   void setLogfile(const std::string& filename) override;
   void saveToFile(const std::string& filename) override;
   void saveToFileWithObjectiveAt(int pos, const std::string& filename) override;
@@ -200,6 +203,8 @@ class XpressProblemV2 : public ProblemImpl {
   std::vector<std::shared_ptr<const ExpressionImpl>> objectives_;
 
   bool logsDisabled_{false};
+  // Stores only the parameters that are explicitly set during a run.
+  std::map<std::string, double> setParamNameToValue_;
   bool solvedAsLp_{false};
   bool modifiedSinceSolve_{true};
   std::string debugPath_;

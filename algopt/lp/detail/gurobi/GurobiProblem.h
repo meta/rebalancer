@@ -25,6 +25,8 @@
 #include "algopt/lp/generic/Variable.h"
 #include "algopt/rebalancer/algopt_common/Timer.h"
 
+#include <map>
+#include <string>
 #include <string_view>
 
 namespace facebook::algopt::lp::detail {
@@ -69,6 +71,8 @@ class GurobiProblem : public ProblemImpl {
 
   double getParameter(const std::string& name) override;
   void setParameter(const std::string& name, double value) override;
+  std::map<std::string, double> getSetParameters() const override;
+  std::string getSolverVersion() const override;
   void setTolerances(const Tolerances& tol) override;
   Tolerances getTolerances() override;
 
@@ -171,7 +175,7 @@ class GurobiProblem : public ProblemImpl {
   void setTimeout(double solveTime);
   // Sets a parameter on the environment of the multi-objective objective at
   // `index`. Unknown names are ignored.
-  static void setObjectiveParameter(
+  void setObjectiveParameter(
       GRBEnv& env,
       int index,
       const std::string& name,
@@ -202,6 +206,8 @@ class GurobiProblem : public ProblemImpl {
   // a const method.
   mutable GRBModel model_;
   GurobiWarmStartType warmStartType_;
+  // Stores only the parameters that are explicitly set during a run.
+  std::map<std::string, double> setParamNameToValue_;
 
   // Variable names in Gurobi (load) order, captured by loadFromFastProblem so
   // getSolvedVariableValues can zip values with names without a second

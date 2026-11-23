@@ -569,6 +569,7 @@ void XpressProblem::setParameter(const std::string& name, double value) {
       throw SolverError(
           fmt::format("could not set int parameter {} {}", name, *intParam));
     }
+    setParamNameToValue_[name] = static_cast<int>(value);
     XLOG(INFO) << fmt::format(
         "Updating XPRESS param {} from {} to {}", name, oldValue, value);
     return;
@@ -580,11 +581,20 @@ void XpressProblem::setParameter(const std::string& name, double value) {
           fmt::format(
               "could not set double parameter {} {}", name, *doubleParam));
     }
+    setParamNameToValue_[name] = value;
     XLOG(INFO) << fmt::format(
         "Updating XPRESS param {} from {} to {}", name, oldValue, value);
     return;
   }
   throw SolverError(fmt::format("unknown parameter {}", name));
+}
+
+std::map<std::string, double> XpressProblem::getSetParameters() const {
+  return setParamNameToValue_;
+}
+
+std::string XpressProblem::getSolverVersion() const {
+  return xpress_params::getXpressVersion();
 }
 
 void XpressProblem::setLogfile(const std::string& filename) {
