@@ -58,7 +58,7 @@ void throwIfUnionIsEmpty(const ThriftUnion& u) {
     throw std::runtime_error(
         fmt::format(
             "Thrift union of type '{}' is empty. Please initialize it with a valid type.",
-            apache::thrift::op::get_class_name_v<ThriftUnion>));
+            apache::thrift::op::get_class_name<ThriftUnion>()));
   }
 }
 
@@ -99,7 +99,7 @@ void setStringFieldToValueIfEmptyOrUnset(
     const std::string& fieldName,
     std::string&& value) {
   apache::thrift::op::for_each_field_id<ThriftStruct>([&]<class Id>(Id) {
-    if (apache::thrift::op::get_name_v<ThriftStruct, Id> == fieldName) {
+    if (apache::thrift::op::get_field_name<ThriftStruct, Id>() == fieldName) {
       auto ref = apache::thrift::op::get<Id>(thriftStruct);
       if constexpr (std::is_assignable_v<decltype(ref), std::string>) {
         constexpr bool is_optional = folly::is_instantiation_of_v<

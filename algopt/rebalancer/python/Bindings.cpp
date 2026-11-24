@@ -98,7 +98,7 @@ void validateSpecName(const T& spec) {
     throw std::runtime_error(
         fmt::format(
             "Expected name field in '{}' to be non-empty",
-            apache::thrift::op::get_class_name_v<T>));
+            apache::thrift::op::get_class_name<T>()));
   }
 }
 
