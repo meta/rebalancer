@@ -27,6 +27,18 @@ const eslintConfig = [
       '@next/next/no-html-link-for-pages': 'off',
       'react/no-unescaped-entities': 'off',
       'jsx-a11y/alt-text': 'off',
+      // One icon set: lucide-react.
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@mui/icons-material', '@mui/icons-material/*'],
+              message: 'Use lucide-react icons.',
+            },
+          ],
+        },
+      ],
     },
   },
 

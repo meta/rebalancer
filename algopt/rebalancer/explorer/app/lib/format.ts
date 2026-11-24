@@ -120,3 +120,37 @@ export function getBadgeColor(
   const negativeColor: BadgeColor = positiveIsBad ? 'success' : 'error';
   return value > 0 ? positiveColor : negativeColor;
 }
+
+const COUNT_FORMAT = new Intl.NumberFormat('en-US');
+
+/** Whole counts with thousands separators: 5225 -> "5,225". */
+export function formatCount(n: number): string {
+  return COUNT_FORMAT.format(n);
+}
+
+/**
+ * Solver runtime in seconds, readable: "5.97 s" below a minute, otherwise
+ * "1 h 2 m 3.4 s" (zero units omitted).
+ */
+export function formatRuntime(totalSeconds: number): string {
+  if (!(totalSeconds > 0)) {
+    return '0 s';
+  }
+  if (totalSeconds < 60) {
+    return `${Number(totalSeconds.toFixed(2))} s`;
+  }
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Number((totalSeconds % 60).toFixed(1));
+  const parts: string[] = [];
+  if (hours > 0) {
+    parts.push(`${hours} h`);
+  }
+  if (minutes > 0) {
+    parts.push(`${minutes} m`);
+  }
+  if (seconds > 0) {
+    parts.push(`${seconds} s`);
+  }
+  return parts.join(' ');
+}

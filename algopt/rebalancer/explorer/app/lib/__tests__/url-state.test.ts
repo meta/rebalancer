@@ -16,7 +16,7 @@
 
 import {describe, expect, it} from 'vitest';
 
-import {parseQs, stringifyQs} from '@/lib/url-state';
+import {parseQs, pickQueryKeys, stringifyQs} from '@/lib/url-state';
 
 // The browser hands the query string to `parseQs` through URLSearchParams,
 // which decodes it once and re-encodes it, so round-trips go through it too.
@@ -70,5 +70,31 @@ describe('stringifyQs / parseQs', () => {
       msObjectives: ['Spread Goal'],
       filters: [{rules: [{stringAny: {column: 'Name', values: ['x']}}]}],
     });
+  });
+});
+
+describe('pickQueryKeys', () => {
+  it('keeps only the named keys, in the same format', () => {
+    const search = new URLSearchParams(
+      stringifyQs({
+        srcBase: 'INTERMEDIATE',
+        srcStep: 5,
+        dstOverrides: overrides(2),
+        msMinimized: '0',
+        evalFilters: [{rules: [{regex: {column: 'Name', regex: 'x'}}]}],
+      }),
+    );
+    const kept = pickQueryKeys(search, ['srcBase', 'srcStep', 'dstOverrides']);
+    expect(parseQs(new URLSearchParams(kept))).toEqual({
+      srcBase: 'INTERMEDIATE',
+      srcStep: '5',
+      dstOverrides: overrides(2),
+    });
+  });
+
+  it('is empty when none of the keys is set', () => {
+    expect(
+      pickQueryKeys(new URLSearchParams('msMinimized=0'), ['srcBase']),
+    ).toBe('');
   });
 });

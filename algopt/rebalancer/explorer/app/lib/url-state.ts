@@ -144,6 +144,21 @@ export function stringifyQs(obj: Record<string, unknown>): string {
   return qs.stringify(obj, {encodeValuesOnly: true});
 }
 
+/** Only `keys` of the query, re-serialized; '' when none of them is set. */
+export function pickQueryKeys(
+  searchParams: URLSearchParams,
+  keys: readonly string[],
+): string {
+  const parsed = parseQs(searchParams);
+  const kept: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (parsed[key] != null) {
+      kept[key] = parsed[key];
+    }
+  }
+  return stringifyQs(kept);
+}
+
 // ---------------------------------------------------------------------------
 // URL sync hook
 // ---------------------------------------------------------------------------

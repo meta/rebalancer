@@ -16,7 +16,7 @@
 
 import {describe, expect, it} from 'vitest';
 
-import {toTitleCase} from '@/lib/format';
+import {formatCount, formatRuntime, toTitleCase} from '@/lib/format';
 
 describe('toTitleCase', () => {
   it('converts UPPER_SNAKE_CASE to Title Case', () => {
@@ -73,5 +73,27 @@ describe('toTitleCase', () => {
   it('handles tabs and newlines as whitespace separators', () => {
     expect(toTitleCase('FOO\tBAR')).toBe('Foo Bar');
     expect(toTitleCase('FOO\nBAR')).toBe('Foo Bar');
+  });
+});
+
+describe('formatCount', () => {
+  it('groups thousands', () => {
+    expect(formatCount(5225)).toBe('5,225');
+    expect(formatCount(12)).toBe('12');
+    expect(formatCount(1234567)).toBe('1,234,567');
+  });
+});
+
+describe('formatRuntime', () => {
+  it.each([
+    [0, '0 s'],
+    [5.974290405, '5.97 s'],
+    [0.5, '0.5 s'],
+    [59.999, '60 s'],
+    [60, '1 m'],
+    [3723.44, '1 h 2 m 3.4 s'],
+    [7200, '2 h'],
+  ])('%s -> %s', (seconds, text) => {
+    expect(formatRuntime(seconds)).toBe(text);
   });
 });

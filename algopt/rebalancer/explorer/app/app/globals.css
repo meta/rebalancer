@@ -1,11 +1,164 @@
 @import "tailwindcss";
 
+/* Explorer design language tokens. lib/ui-tokens.ts is the source;
+ * ui-tokens.test.ts checks that every value here matches it. Semantic colors
+ * are light on :root and dark on [data-theme="dark"] (set on <html> by the MUI
+ * theme provider); the other tokens are the same in both themes. */
 :root {
-  --background: #f0f2f5;
-  --foreground: #171717;
-  --muted-foreground: #737373;
-  --muted: #f5f5f5;
-  --border: #e5e5e5;
+  --color-bg-canvas: #f6f7f9;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-2: #fafbfc;
+  --color-bg-subtle: #f2f4f7;
+  --color-border-default: #e4e7ec;
+  --color-border-strong: #d0d5dd;
+  --color-text-primary: #101828;
+  --color-text-secondary: #475467;
+  --color-text-tertiary: #667085;
+  --color-text-decorative: #848ea0;
+  --color-action: #0866ff;
+  --color-action-hover: #0457d9;
+  --color-action-subtle: #eef4ff;
+  --color-action-subtle-border: #dbe7ff;
+  --color-positive: #12b76a;
+  --color-positive-text: #067647;
+  --color-positive-bg: #ecfdf3;
+  --color-positive-border: #abefc6;
+  --color-negative: #f04438;
+  --color-negative-text: #b42318;
+  --color-negative-bg: #fef3f2;
+  --color-negative-border: #fecdca;
+  --color-caution: #f79009;
+  --color-caution-text: #b54708;
+  --color-caution-bg: #fffaeb;
+  --color-caution-border: #fedf89;
+  --color-alt: #7a5af8;
+  --color-alt-text: #6938ef;
+  --color-alt-bg: #f4f3ff;
+  --color-alt-border: #d9d6fe;
+  --color-baseline: #98a2b3;
+  --color-current: #0866ff;
+  --color-inverse-bg: #101828;
+  --color-inverse-text: #ffffff;
+  --color-cat-1: #0866ff;
+  --color-cat-2: #7a5af8;
+  --color-cat-3: #0e9384;
+  --color-cat-4: #dd2590;
+  --color-cat-5: #f79009;
+  --color-cat-6: #2e90fa;
+  --color-cat-7: #66c61c;
+  --color-cat-8: #ef6820;
+  --color-cat-other: #98a2b3;
+  --overlay-scrim: rgba(16, 24, 40, 0.18);
+  --overlay-modal: rgba(16, 24, 40, 0.28);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+    monospace;
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 15px;
+  --text-xl: 17px;
+  --text-2xl: 20px;
+  --text-3xl: 24px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-heading: 650;
+  --weight-bold: 700;
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-full: 999px;
+  --control-xs: 20px;
+  --control-sm: 26px;
+  --control-md: 32px;
+  --control-lg: 36px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0 4px 8px -2px rgba(16, 24, 40, 0.08),
+    0 2px 4px -2px rgba(16, 24, 40, 0.04);
+  --shadow-lg: 0 20px 24px -4px rgba(16, 24, 40, 0.1),
+    0 8px 8px -4px rgba(16, 24, 40, 0.04);
+  --duration-fast: 120ms;
+  --duration-base: 150ms;
+  --duration-panel: 200ms;
+  --ease-standard: ease;
+  --z-sticky: 1;
+  --z-contextbar: 20;
+  --z-topbar: 30;
+  --z-scrim: 40;
+  --z-drawer: 41;
+  --z-tooltip: 60;
+  --z-menu: 65;
+  --z-palette: 70;
+  --z-toast: 80;
+  --z-progress: 90;
+}
+
+[data-theme="dark"] {
+  --color-bg-canvas: #0b0f17;
+  --color-bg-surface: #111827;
+  --color-bg-surface-2: #151d2c;
+  --color-bg-subtle: #1b2435;
+  --color-border-default: #253046;
+  --color-border-strong: #33415c;
+  --color-text-primary: #f2f4f7;
+  --color-text-secondary: #c3cad6;
+  --color-text-tertiary: #98a2b3;
+  --color-text-decorative: #6b7689;
+  --color-action: #4d8eff;
+  --color-action-hover: #6aa1ff;
+  --color-action-subtle: #13213d;
+  --color-action-subtle-border: #1a2c52;
+  --color-positive-text: #4ade80;
+  --color-positive-bg: #0c2a1c;
+  --color-positive-border: #1f5135;
+  --color-negative-text: #ff7b72;
+  --color-negative-bg: #3a1513;
+  --color-negative-border: #6b2420;
+  --color-caution-text: #fbbf24;
+  --color-caution-bg: #33240a;
+  --color-caution-border: #5c3d0b;
+  --color-alt-text: #a48afb;
+  --color-alt-bg: #221d45;
+  --color-alt-border: #3b3270;
+  --color-baseline: #6b7689;
+  --color-current: #4d8eff;
+}
+
+/* Legacy alias layer: the names the Tailwind theme below and the assistant
+ * chat styles use, now reading the semantic tokens. */
+:root,
+[data-theme="dark"] {
+  --background: var(--color-bg-canvas);
+  --foreground: var(--color-text-primary);
+  --muted-foreground: var(--color-text-tertiary);
+  --muted: var(--color-bg-subtle);
+  --border: var(--color-border-default);
+  --rbx-accent: var(--color-action);
+  --rbx-accent-dark: var(--color-action-hover);
+  --rbx-on-accent: var(--color-inverse-text);
+  --rbx-accent-50: var(--color-action-subtle);
+  --rbx-surface: var(--color-bg-surface);
+  --rbx-surface-2: var(--color-bg-surface-2);
+  --rbx-border-strong: var(--color-border-strong);
+  --rbx-text-secondary: var(--color-text-secondary);
+  --rbx-shadow-sm: var(--shadow-sm);
 }
 
 @theme inline {
@@ -14,55 +167,76 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-border: var(--border);
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui,
-    sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --color-accent: var(--rbx-accent);
+  --color-accent-dark: var(--rbx-accent-dark);
+  --color-accent-50: var(--rbx-accent-50);
+  --color-surface: var(--rbx-surface);
+  --color-surface-2: var(--rbx-surface-2);
+  --color-border-strong: var(--rbx-border-strong);
+  --color-text-secondary: var(--rbx-text-secondary);
+  --shadow-card: var(--rbx-shadow-sm);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+    monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-    --muted-foreground: #a3a3a3;
-    --muted: #262626;
-    --border: #404040;
-  }
+html {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--color-bg-canvas);
+  color: var(--color-text-primary);
   font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.45;
 }
 
-/* Override react-querybuilder rule group box */
-.ruleGroup {
-  background: transparent !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 0.375rem !important;
+/* prefers-reduced-motion removes all movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media print {
+  [data-shell="top-bar"],
+  [data-shell="side-nav"],
+  [data-shell="compare"] {
+    display: none !important;
+  }
 }
 
 /* Chat bubble overrides for the Rebalancer Assistant.
  * EPS's stylesheet provides the underlying tokens and utility classes.
- * User bubbles use the app's primary blue so user vs assistant is
+ * User bubbles use the app's action blue so user vs assistant is
  * distinguishable by color, not just alignment. EPS applies
  * --eps-chat-bubble-bg inline to the user bubble; the assistant bubble uses
  * its own neutral token below. */
 .rebalancer-chat-bubbles {
-  --eps-chat-bubble-bg: #2563eb;
-  --eps-chat-bubble-radius: 16px;
-  --rebalancer-assistant-bubble-bg: #f3f4f6;
+  --eps-chat-bubble-bg: var(--color-action);
+  --eps-chat-bubble-radius: var(--radius-xl);
+  --rebalancer-assistant-bubble-bg: var(--color-bg-subtle);
 }
 
 /* User message bubble — EPS sets backgroundColor inline via the CSS var
- * above; keep text readable on the app-blue background. */
+ * above; keep text readable on the action-blue background. */
 .rebalancer-chat-bubbles [data-metamate-message-list-bubble] {
-  color: #ffffff;
+  color: var(--color-inverse-text);
 }
 
 /* Vertical gap between successive chat messages. */
 .rebalancer-chat-bubbles [role="article"] + [role="article"] {
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
 
 /* Assistant message bubble — wrap just the content (first block child). */
@@ -71,13 +245,7 @@ body {
   > :is(div, p):first-child {
   background-color: var(--rebalancer-assistant-bubble-bg);
   border-radius: var(--eps-chat-bubble-radius);
-  padding: 10px 14px;
+  padding: var(--space-2-5) var(--space-3);
   max-width: 85%;
   width: fit-content;
-}
-
-@media (prefers-color-scheme: dark) {
-  .rebalancer-chat-bubbles {
-    --rebalancer-assistant-bubble-bg: #262626;
-  }
 }
