@@ -1,17 +1,25 @@
 'use client';
 
+import {useCallback, useRef, useState} from 'react';
+
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  FormControlLabel,
+  Box,
+  Button,
+  Collapse,
   IconButton,
-  Radio,
-  RadioGroup,
+  Paper,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
+  Typography,
 } from '@mui/material';
-import {ArrowLeftRight} from 'lucide-react';
+import {ArrowLeftRight, ChevronDown} from 'lucide-react';
+
+import {useRegisterComparison} from '@/app/components/shell/CompareContext';
+import HintIcon from '@/app/components/ui/HintIcon';
+import {Count} from '@/app/components/ui/Pill';
+import {COLOR, radius, TEXT, WEIGHT} from '@/lib/ui-tokens';
 
 import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
 
@@ -74,70 +82,74 @@ function AssignmentSelector({
     onChange(newAssignment);
   };
 
+  const disabledTip = {
+    FINAL: hasFinalAssignment
+      ? 'Assignment solution proposed by Rebalancer'
+      : 'No final assignment available',
+    INTERMEDIATE: hasIntermediateAssignment
+      ? 'Intermediate assignment after applying the first k moveSets'
+      : 'No intermediate assignments available',
+  };
+
   return (
-    <Card variant="outlined">
-      <CardHeader
-        title={header}
-        titleTypographyProps={{variant: 'subtitle2'}}
-        subheader={helpMessage}
-        subheaderTypographyProps={{variant: 'caption'}}
-        sx={{pb: 0}}
-        action={
-          showMenu ? (
+    // An editable area: dashed, on surface-2.
+    <Box
+      sx={{
+        p: 2,
+        minWidth: 0,
+        border: `1px dashed ${COLOR.borderStrong}`,
+        borderRadius: radius('md'),
+        bgcolor: COLOR.bgSurface2,
+      }}>
+      <Box sx={{display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.5}}>
+        <Typography variant="subtitle1" component="h3">
+          {header}
+        </Typography>
+        <HintIcon title={helpMessage} label={`About ${header}`} />
+        {showMenu && (
+          <Box sx={{ml: 'auto'}}>
             <AssignmentSelectorMenu
               assignment={assignment}
               hasFinalAssignment={hasFinalAssignment}
               onAssignmentChange={onChange}
             />
-          ) : undefined
-        }
-      />
-      <CardContent className="space-y-3">
-        <div>
-          <div className="text-xs font-semibold text-muted-foreground mb-1">
+          </Box>
+        )}
+      </Box>
+      <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
+        <Box>
+          <Typography variant="overline" component="div" sx={{mb: 0.5}}>
             Base
-          </div>
-          <RadioGroup
+          </Typography>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            aria-label={`${header} base`}
             value={assignment.base}
-            onChange={e =>
-              handleBaseChange(e.target.value as UIAssignment['base'])
-            }
-            row>
-            <FormControlLabel
-              value="INITIAL"
-              control={<Radio size="small" />}
-              label="Initial"
-              slotProps={{typography: {variant: 'body2'}}}
-            />
-            <Tooltip
-              title={
-                hasFinalAssignment
-                  ? 'Assignment solution proposed by Rebalancer'
-                  : 'No final assignment available'
-              }>
-              <FormControlLabel
-                value="FINAL"
-                control={<Radio size="small" />}
-                label="Final"
-                disabled={!hasFinalAssignment}
-                slotProps={{typography: {variant: 'body2'}}}
-              />
+            onChange={(_e, value: UIAssignment['base'] | null) => {
+              if (value != null) {
+                handleBaseChange(value);
+              }
+            }}>
+            <ToggleButton value="INITIAL">Initial</ToggleButton>
+            {/* The span keeps the tooltip working on a disabled button. */}
+            <Tooltip title={disabledTip.FINAL}>
+              <span style={{display: 'flex'}}>
+                <ToggleButton value="FINAL" disabled={!hasFinalAssignment}>
+                  Final
+                </ToggleButton>
+              </span>
             </Tooltip>
-            <Tooltip
-              title={
-                hasIntermediateAssignment
-                  ? 'Intermediate assignment after applying the first k moveSets'
-                  : 'No intermediate assignments available'
-              }>
-              <FormControlLabel
-                value="INTERMEDIATE"
-                control={<Radio size="small" />}
-                label="Intermediate"
-                disabled={!hasIntermediateAssignment}
-                slotProps={{typography: {variant: 'body2'}}}
-              />
+            <Tooltip title={disabledTip.INTERMEDIATE}>
+              <span style={{display: 'flex'}}>
+                <ToggleButton
+                  value="INTERMEDIATE"
+                  disabled={!hasIntermediateAssignment}>
+                  Intermediate
+                </ToggleButton>
+              </span>
             </Tooltip>
-          </RadioGroup>
+          </ToggleButtonGroup>
           {hasIntermediateAssignment && assignment.base === 'INTERMEDIATE' && (
             <TextField
               label="MoveSet #"
@@ -156,25 +168,91 @@ function AssignmentSelector({
               slotProps={{
                 htmlInput: {min: 0, max: numSteps, step: 1},
               }}
-              sx={{mt: 1, width: 120}}
+              sx={{mt: 1.5, width: 120, display: 'block'}}
             />
           )}
-        </div>
+        </Box>
 
-        <div>
-          <div className="text-xs font-semibold text-muted-foreground mb-1">
-            + {assignment.overrides.length} moves
-          </div>
+        <Box>
+          <Box sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 0.5}}>
+            <Typography variant="overline" component="div">
+              Moves
+            </Typography>
+            <Count>{assignment.overrides.length}</Count>
+          </Box>
           <MoveList
             moves={assignment.overrides}
             onChange={newOverrides =>
               onChange({...assignment, overrides: newOverrides})
             }
           />
-        </div>
-      </CardContent>
-    </Card>
+        </Box>
+      </Box>
+    </Box>
   );
+}
+
+function baseLabel(assignment: UIAssignment): string {
+  switch (assignment.base) {
+    case 'INITIAL':
+      return 'Initial';
+    case 'FINAL':
+      return 'Final';
+    case 'INTERMEDIATE':
+      return `Intermediate · step ${assignment.step ?? 0}`;
+  }
+}
+
+/**
+ * One side of the comparison: "A ● Initial +2 moves", with the baseline (A,
+ * grey) or current (B, blue) dot of the Compare control.
+ */
+function AssignmentSummary({
+  label,
+  assignment,
+}: {
+  label: 'A' | 'B';
+  assignment: UIAssignment;
+}) {
+  const moves = assignment.overrides.length;
+  return (
+    <Box sx={{display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0}}>
+      <Box
+        component="span"
+        sx={{color: COLOR.textTertiary, fontWeight: WEIGHT.semibold}}>
+        {label}
+      </Box>
+      <Box
+        component="span"
+        aria-hidden
+        sx={{
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          flexShrink: 0,
+          bgcolor: label === 'A' ? COLOR.baseline : COLOR.current,
+        }}
+      />
+      <Box component="span" sx={{fontWeight: WEIGHT.semibold}}>
+        {baseLabel(assignment)}
+      </Box>
+      <Box
+        component="span"
+        sx={{
+          color: COLOR.textTertiary,
+          fontSize: TEXT.xs,
+          whiteSpace: 'nowrap',
+        }}>
+        {`+${moves} ${moves === 1 ? 'move' : 'moves'}`}
+      </Box>
+    </Box>
+  );
+}
+
+/** "Initial", "Step 12", with "+N moves" when it has overrides. */
+function compareLabel(side: 'A' | 'B', assignment: UIAssignment): string {
+  const moves = assignment.overrides.length;
+  return `${side} · ${baseLabel(assignment)}${moves > 0 ? ` +${moves}` : ''}`;
 }
 
 interface AssignmentCardProps {
@@ -193,21 +271,108 @@ export default function AssignmentCard({
     metadata?.hasIntermediateAssignment ?? false;
   const numSteps = metadata?.numSteps ?? 0;
 
+  // Collapsed by default only for the plain comparison; a link with moves or
+  // an intermediate step opens with the editor showing.
+  const [editorOpen, setEditorOpen] = useState(
+    () =>
+      assignments.src.overrides.length > 0 ||
+      assignments.dst.overrides.length > 0 ||
+      assignments.src.base === 'INTERMEDIATE' ||
+      assignments.dst.base === 'INTERMEDIATE',
+  );
+
+  const swap = () =>
+    onAssignmentsChange({src: assignments.dst, dst: assignments.src});
+
+  // The run bar's Compare control shows these sides and opens this editor.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const openEditor = useCallback(() => {
+    setEditorOpen(true);
+    cardRef.current?.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }, []);
+  useRegisterComparison(
+    compareLabel('A', assignments.src),
+    compareLabel('B', assignments.dst),
+    openEditor,
+  );
+
   return (
-    <Card>
-      <CardHeader
-        title="Assignments to compare"
-        titleTypographyProps={{variant: 'h6'}}
-      />
-      <CardContent>
-        {hasIntermediateAssignment && (
-          <LocalSearchNavigator
-            assignments={assignments}
-            onAssignmentsChange={onAssignmentsChange}
-            numSteps={numSteps}
-          />
-        )}
-        <div className="grid grid-cols-[1fr_max-content_1fr] gap-2 items-start">
+    <Paper variant="outlined" ref={cardRef} sx={{scrollMarginTop: 120}}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          columnGap: 2,
+          rowGap: 1,
+          px: 2,
+          py: 1.25,
+        }}>
+        <Typography variant="h6" component="h2">
+          Assignments to compare
+        </Typography>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 1,
+            minWidth: 0,
+          }}>
+          <AssignmentSummary label="A" assignment={assignments.src} />
+          <Tooltip title="Exchange assignments">
+            <IconButton
+              size="small"
+              aria-label="Exchange assignments"
+              onClick={swap}>
+              <ArrowLeftRight size={16} />
+            </IconButton>
+          </Tooltip>
+          <AssignmentSummary label="B" assignment={assignments.dst} />
+        </Box>
+        <Box
+          sx={{
+            ml: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 1,
+          }}>
+          {hasIntermediateAssignment && (
+            <LocalSearchNavigator
+              assignments={assignments}
+              onAssignmentsChange={onAssignmentsChange}
+              numSteps={numSteps}
+            />
+          )}
+          <Button
+            size="small"
+            variant="outlined"
+            aria-expanded={editorOpen}
+            endIcon={
+              <ChevronDown
+                size={16}
+                style={{
+                  transform: editorOpen ? 'rotate(180deg)' : undefined,
+                  transition: 'transform 150ms',
+                }}
+              />
+            }
+            onClick={() => setEditorOpen(open => !open)}>
+            {editorOpen ? 'Hide editor' : 'Edit comparison'}
+          </Button>
+        </Box>
+      </Box>
+      <Collapse in={editorOpen} unmountOnExit>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {xs: '1fr', md: '1fr auto 1fr'},
+            alignItems: 'start',
+            gap: 2,
+            p: 2,
+            borderTop: `1px solid ${COLOR.borderDefault}`,
+          }}>
           <AssignmentSelector
             header="Assignment A"
             helpMessage="The first of two assignments to compare"
@@ -218,20 +383,17 @@ export default function AssignmentCard({
             numSteps={numSteps}
             showMenu
           />
-          <div className="self-center">
+          <Box sx={{alignSelf: 'center', justifySelf: 'center'}}>
             <Tooltip title="Exchange assignments">
               <IconButton
                 size="small"
-                onClick={() =>
-                  onAssignmentsChange({
-                    src: assignments.dst,
-                    dst: assignments.src,
-                  })
-                }>
-                <ArrowLeftRight className="size-4" />
+                aria-label="Exchange assignments"
+                onClick={swap}
+                sx={{transform: {xs: 'rotate(90deg)', md: 'none'}}}>
+                <ArrowLeftRight size={16} />
               </IconButton>
             </Tooltip>
-          </div>
+          </Box>
           <AssignmentSelector
             header="Assignment B"
             helpMessage="The second of two assignments to compare"
@@ -242,8 +404,8 @@ export default function AssignmentCard({
             numSteps={numSteps}
             showMenu
           />
-        </div>
-      </CardContent>
-    </Card>
+        </Box>
+      </Collapse>
+    </Paper>
   );
 }

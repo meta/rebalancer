@@ -23,6 +23,21 @@ const BASE_MAP: Record<UIAssignment['base'], AssignmentBase> = {
   INTERMEDIATE: 2,
 };
 
+/**
+ * Short name of an assignment for column headers and the detail pane:
+ * "Initial", "Final" or "Step 12", plus "+3 moves" when it has overrides.
+ */
+export function assignmentShortLabel(ui: UIAssignment): string {
+  const base =
+    ui.base === 'INITIAL'
+      ? 'Initial'
+      : ui.base === 'FINAL'
+        ? 'Final'
+        : `Step ${ui.step ?? 0}`;
+  const n = ui.overrides.length;
+  return n === 0 ? base : `${base} +${n} ${n === 1 ? 'move' : 'moves'}`;
+}
+
 export function toThriftAssignment(ui: UIAssignment): Assignment {
   const overrides: Record<string, string> = {};
   for (const o of ui.overrides) {

@@ -10,16 +10,12 @@ import {
   useState,
 } from 'react';
 
-import ArrowDownward from '@mui/icons-material/ArrowDownward';
-import ArrowUpward from '@mui/icons-material/ArrowUpward';
-import WarningAmber from '@mui/icons-material/WarningAmber';
 import {
   Autocomplete,
   Box,
   Button,
   Checkbox,
   Chip,
-  CircularProgress,
   FormControlLabel,
   IconButton,
   Paper,
@@ -38,6 +34,11 @@ import {
 
 import type {Assignments} from '@/app/components/evaluation/AssignmentCard';
 import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+} from '@/app/components/ui/StateViews';
+import {
   extractCellValue,
   formatCellValue,
   NAN_STRING,
@@ -52,7 +53,7 @@ import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
 import {useRebalancerHandle} from '@/lib/contexts/RebalancerHandleContext';
 import {
   AUTOCOMPLETE_WORD_BREAK_PROPS,
-  CHIP_WORD_BREAK_SX,
+  formatCount,
   getBadgeColor,
   isHighlightColumn,
   isNumericColumn,
@@ -71,7 +72,18 @@ import type {
 } from '@/lib/rebalancer-explorer-types';
 import {OrderDirection} from '@/lib/rebalancer-explorer-types';
 
+import {AlertTriangle, ChevronDown} from 'lucide-react';
+
+import CopyCellAffordance from '@/app/components/CopyCellAffordance';
+import EntityLink from '@/app/components/detail-pane/EntityLink';
 import EntityFilter from '@/app/components/EntityFilter';
+import HeaderLabel from '@/app/components/table/HeaderLabel';
+import TableShell from '@/app/components/table/TableShell';
+import {ELLIPSIS_SX} from '@/app/components/table/tableSx';
+import Delta from '@/app/components/ui/Delta';
+import Pill from '@/app/components/ui/Pill';
+import {TAG_CHIP_SX} from '@/app/components/ui/Tag';
+import {ACCENT_100, COLOR, TEXT, TONES} from '@/lib/ui-tokens';
 import TablePaginationActions from '@/app/components/TablePaginationActions';
 import useCopyOnClick from '@/app/components/useCopyOnClick';
 
@@ -119,6 +131,14 @@ interface MoveSetsTableProps {
 // ---------------------------------------------------------------------------
 
 const columnHelper = createColumnHelper<RowData>();
+
+// Selection actions: white on the tinted selection bar.
+const TONAL_SX = {
+  bgcolor: COLOR.bgSurface,
+  color: COLOR.actionHover,
+  border: `1px solid ${ACCENT_100}`,
+  '&:hover': {bgcolor: COLOR.bgSurface, borderColor: COLOR.action},
+} as const;
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -404,7 +424,9 @@ export default function MoveSetsTable({
   // ---- Column definitions ----
   // (resultColumns is declared earlier, before the pruning effects that need it)
 
-  const columnLabels: Record<string, string> = useMemo(() => {
+  // The backend column names are shown verbatim; the run's own entity names
+  // go underneath in table headers and in parentheses in the filter.
+  const entityLabels: Record<string, string> = useMemo(() => {
     const labels: Record<string, string> = {};
     const objectName = metadata?.objectName;
     const containerName = metadata?.containerName;
@@ -413,11 +435,21 @@ export default function MoveSetsTable({
     }
     if (containerName) {
       labels['Container'] = containerName;
-      labels['Source Container'] = `Source ${containerName}`;
-      labels['Destination Container'] = `Destination ${containerName}`;
+      labels['Source Container'] = containerName;
+      labels['Destination Container'] = containerName;
     }
     return labels;
   }, [metadata?.objectName, metadata?.containerName]);
+  const columnLabels: Record<string, string> = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(entityLabels).map(([col, label]) => [
+          col,
+          `${col} (${label})`,
+        ]),
+      ),
+    [entityLabels],
+  );
 
   // Map move-set column names to the entity names used by the typeahead API.
   // The typeahead backend expects the actual entity name (e.g. "server")
@@ -447,58 +479,63 @@ export default function MoveSetsTable({
     return entities;
   }, [metadata?.objectName, metadata?.containerName, partition, scope]);
 
+  // Object, container and scope-item values open their row in the side
+  // pane. `Group` (a partition) has no entity page, so it is not linked.
+  const linkEntities = useMemo(() => {
+    const links = {...columnTypeaheadEntities};
+    delete links['Group'];
+    return links;
+  }, [columnTypeaheadEntities]);
+
   const columns = useMemo(() => {
     return resultColumns.map((col, colIndex) =>
       columnHelper.accessor(String(colIndex), {
         id: String(colIndex),
-        header: columnLabels[col.name] ?? col.name,
+        header: () =>
+          entityLabels[col.name] == null ? (
+            col.name
+          ) : (
+            <Box component="span" sx={{display: 'block'}}>
+              {col.name}
+              <Typography
+                variant="caption"
+                component="span"
+                sx={{display: 'block', fontWeight: 400}}>
+                {entityLabels[col.name]}
+              </Typography>
+            </Box>
+          ),
         cell: info => {
           const cellData = info.getValue();
           const value = extractCellValue(cellData, col);
 
           // NaN chip
           if (value === NAN_STRING) {
-            return (
-              <Chip
-                label="NaN"
-                size="small"
-                color="error"
-                variant="filled"
-                sx={{
-                  ...CHIP_WORD_BREAK_SX,
-                  fontVariantNumeric: 'tabular-nums',
-                  fontSize: '0.8125rem',
-                }}
-              />
-            );
+            return <Pill tone="bad">NaN</Pill>;
           }
 
           // Highlighted numeric value with colored chip
           if (isHighlightColumn(col.type) && typeof value === 'number') {
             const color = getBadgeColor(value);
+            const text = formatCellValue(value).replace(/-/g, '\u2212');
+            if (color === 'default') {
+              return <Delta tone="zero">{text}</Delta>;
+            }
             return (
-              <Chip
-                label={formatCellValue(value)}
-                size="small"
-                color={color}
-                variant={color === 'default' ? 'outlined' : 'filled'}
-                sx={{
-                  ...CHIP_WORD_BREAK_SX,
-                  fontVariantNumeric: 'tabular-nums',
-                  fontSize: '0.8125rem',
-                }}
-              />
+              <Delta tone={color === 'success' ? 'good' : 'bad'}>
+                {value > 0 ? `+${text}` : text}
+              </Delta>
             );
           }
 
+          const linkEntity = linkEntities[col.name];
+          if (linkEntity != null && typeof value === 'string') {
+            return <EntityLink entity={linkEntity} id={value} />;
+          }
           return (
-            <span
-              style={{
-                fontVariantNumeric: 'tabular-nums',
-                fontSize: '0.8125rem',
-              }}>
+            <Box component="span" data-overflow sx={ELLIPSIS_SX}>
               {formatCellValue(value)}
-            </span>
+            </Box>
           );
         },
         size: isNumericColumn(col.type) ? 130 : 180,
@@ -508,7 +545,7 @@ export default function MoveSetsTable({
         },
       }),
     );
-  }, [columnLabels, resultColumns]);
+  }, [entityLabels, resultColumns, linkEntities]);
 
   // ---- Row data ----
   const data = useMemo<RowData[]>(() => {
@@ -612,59 +649,66 @@ export default function MoveSetsTable({
         sx={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 1,
           px: 2,
-          py: 1,
-          borderBottom: isMinimized ? undefined : 1,
-          borderBottomColor: isMinimized ? undefined : 'divider',
+          py: 1.25,
         }}>
-        <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-          <Typography variant="h6" sx={{fontWeight: 600}}>
-            {metadata?.hasOnlySingleMoves ? 'Moves' : 'Move sets'}
-          </Typography>
-          {result != null && (
-            <Typography variant="body2" color="text.secondary">
-              ({totalCount} {tableHeaderStr})
-            </Typography>
-          )}
-        </Box>
-        <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
+        <Typography variant="h6" component="h2">
+          {metadata?.hasOnlySingleMoves ? 'Moves' : 'Move sets'}
+        </Typography>
+        {result != null && (
+          <Box
+            component="span"
+            sx={{color: COLOR.textTertiary, fontSize: TEXT.xs}}>
+            {`${formatCount(totalCount)} ${tableHeaderStr}`}
+          </Box>
+        )}
+        <Box
+          sx={{
+            ml: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 1.5,
+          }}>
           {onPinToInitialFinalChange != null && (
             <Tooltip title="Always show moves between Initial and Final, regardless of assignment selection">
               <FormControlLabel
+                sx={{mr: 0}}
                 control={
                   <Checkbox
-                    size="small"
                     checked={pinToInitialFinal ?? false}
                     onChange={(_e, checked) =>
                       onPinToInitialFinalChange(checked)
                     }
                   />
                 }
-                label={
-                  <Typography variant="body2" sx={{fontSize: '0.8125rem'}}>
-                    Pin to Initial → Final
-                  </Typography>
-                }
+                label="Pin to Initial → Final"
               />
             </Tooltip>
           )}
-          <FormControlLabel
-            control={
-              <Checkbox
-                size="small"
-                checked={isMinimized}
-                onChange={(_e, checked) =>
-                  onViewStateChange(prev => ({...prev, isMinimized: checked}))
-                }
+          <Button
+            size="small"
+            variant="outlined"
+            aria-expanded={!isMinimized}
+            endIcon={
+              <ChevronDown
+                size={16}
+                style={{
+                  transform: isMinimized ? undefined : 'rotate(180deg)',
+                  transition: 'transform 150ms',
+                }}
               />
             }
-            label={
-              <Typography variant="body2" sx={{fontSize: '0.8125rem'}}>
-                Hide all {tableHeaderStr}
-              </Typography>
-            }
-          />
+            onClick={() =>
+              onViewStateChange(prev => ({
+                ...prev,
+                isMinimized: !prev.isMinimized,
+              }))
+            }>
+            {isMinimized ? `Show ${tableHeaderStr}` : `Hide ${tableHeaderStr}`}
+          </Button>
         </Box>
       </Box>
 
@@ -678,13 +722,16 @@ export default function MoveSetsTable({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 1,
+                flexWrap: 'wrap',
                 px: 2,
                 py: 1,
-                backgroundColor: 'action.hover',
-                borderBottom: 1,
-                borderBottomColor: 'divider',
+                bgcolor: COLOR.actionSubtle,
+                borderTop: `1px solid ${COLOR.actionSubtleBorder}`,
+                borderBottom: `1px solid ${COLOR.actionSubtleBorder}`,
               }}>
-              <Typography variant="body2" sx={{fontWeight: 600, mr: 1}}>
+              <Typography
+                variant="body2"
+                sx={{fontWeight: 600, mr: 1, color: COLOR.actionHover}}>
                 {selectedMoves.size}{' '}
                 {selectedMoves.size === 1 ? 'move' : 'moves'} selected
                 {selectedOnPage < selectedMoves.size &&
@@ -692,7 +739,7 @@ export default function MoveSetsTable({
               </Typography>
               <Button
                 size="small"
-                variant="outlined"
+                sx={TONAL_SX}
                 onClick={() =>
                   handleMoveAction('Destination Container', 'src')
                 }>
@@ -700,7 +747,7 @@ export default function MoveSetsTable({
               </Button>
               <Button
                 size="small"
-                variant="outlined"
+                sx={TONAL_SX}
                 onClick={() =>
                   handleMoveAction('Destination Container', 'dst')
                 }>
@@ -708,36 +755,40 @@ export default function MoveSetsTable({
               </Button>
               <Button
                 size="small"
-                variant="outlined"
+                sx={TONAL_SX}
                 onClick={() => handleMoveAction('Source Container', 'src')}>
                 Revert in A
               </Button>
               <Button
                 size="small"
-                variant="outlined"
+                sx={TONAL_SX}
                 onClick={() => handleMoveAction('Source Container', 'dst')}>
                 Revert in B
               </Button>
-              <Button size="small" onClick={() => setSelectedMoves(new Map())}>
+              <Button
+                size="small"
+                variant="text"
+                sx={{ml: 'auto'}}
+                onClick={() => setSelectedMoves(new Map())}>
                 Clear
               </Button>
             </Box>
           )}
 
-          {/* Selectors */}
+          {/* Selectors: labels above, so their tops line up. */}
           <Box
             sx={{
               display: 'flex',
               gap: 2,
               px: 2,
               py: 1,
-              alignItems: 'center',
+              alignItems: 'flex-start',
               flexWrap: 'wrap',
             }}>
             {/* Partition selector */}
             <Autocomplete
               size="small"
-              sx={{minWidth: 240, flex: 1}}
+              sx={{flex: '1 1 220px', minWidth: 220, maxWidth: 320}}
               options={metadata?.partitionNames ?? []}
               value={partition}
               onChange={(_e, value) => handlePartitionChange(value)}
@@ -746,10 +797,6 @@ export default function MoveSetsTable({
                   {...params}
                   label="Partition"
                   placeholder={`Display ${tableHeaderStr} by partition`}
-                  inputProps={{
-                    ...params.inputProps,
-                    title: partition ?? '',
-                  }}
                 />
               )}
               slotProps={AUTOCOMPLETE_WORD_BREAK_PROPS}
@@ -758,7 +805,7 @@ export default function MoveSetsTable({
             {/* Scope selector */}
             <Autocomplete
               size="small"
-              sx={{minWidth: 240, flex: 1}}
+              sx={{flex: '1 1 220px', minWidth: 220, maxWidth: 320}}
               options={metadata?.scopeNames ?? []}
               value={scope}
               onChange={(_e, value) => handleScopeChange(value)}
@@ -767,10 +814,6 @@ export default function MoveSetsTable({
                   {...params}
                   label="Scope"
                   placeholder={`Display ${tableHeaderStr} by scope`}
-                  inputProps={{
-                    ...params.inputProps,
-                    title: scope ?? '',
-                  }}
                 />
               )}
               slotProps={AUTOCOMPLETE_WORD_BREAK_PROPS}
@@ -782,13 +825,13 @@ export default function MoveSetsTable({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 0.5,
-                flex: 1,
-                minWidth: 300,
+                flex: '2 1 300px',
+                minWidth: 260,
               }}>
               <Autocomplete
                 multiple
                 size="small"
-                sx={{minWidth: 300, flex: 1}}
+                sx={{minWidth: 0, flex: 1}}
                 options={metadata?.objectiveNames ?? []}
                 value={objectives}
                 disabled={!isObjSelectorEnabled}
@@ -808,7 +851,7 @@ export default function MoveSetsTable({
                         key={key}
                         label={option}
                         size="small"
-                        sx={CHIP_WORD_BREAK_SX}
+                        sx={TAG_CHIP_SX}
                         {...rest}
                       />
                     );
@@ -831,8 +874,10 @@ export default function MoveSetsTable({
                     <IconButton
                       ref={warningIconRef}
                       size="small"
-                      onClick={() => setWarningPopoverOpen(true)}>
-                      <WarningAmber color="warning" fontSize="small" />
+                      aria-label="Why is this disabled?"
+                      onClick={() => setWarningPopoverOpen(true)}
+                      sx={{mt: '23px'}}>
+                      <AlertTriangle size={16} color={TONES.warn.solid} />
                     </IconButton>
                   </Tooltip>
                   <Popover
@@ -843,7 +888,7 @@ export default function MoveSetsTable({
                       vertical: 'bottom',
                       horizontal: 'left',
                     }}>
-                    <Box sx={{p: 2, maxWidth: 400}}>
+                    <Box sx={{p: 1.5, maxWidth: 380}}>
                       <Typography variant="body2">{warnMsg}</Typography>
                     </Box>
                   </Popover>
@@ -867,249 +912,165 @@ export default function MoveSetsTable({
           )}
 
           {/* Loading state */}
-          {loading && (
-            <Box
-              role="status"
-              sx={{
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                py: 4,
-              }}>
-              <CircularProgress size={40} />
-              <Box sx={{ml: 2, color: 'text.secondary'}}>
-                Loading move sets...
-              </Box>
-            </Box>
-          )}
+          {loading && <LoadingState label="Loading move sets..." />}
 
           {/* Error state */}
           {error != null && !loading && (
-            <Box sx={{px: 2, py: 2}}>
-              <Typography color="error" variant="body2">
-                {error}
-              </Typography>
-            </Box>
+            <ErrorState sx={{m: 2}}>{error}</ErrorState>
           )}
 
           {/* Table */}
           {!loading && error == null && result != null && (
-            <Box sx={{overflow: 'auto'}}>
-              <table
-                style={{
-                  width: '100%',
-                  minWidth: table.getTotalSize(),
-                  tableLayout: 'fixed',
-                  borderCollapse: 'separate',
-                  borderSpacing: 0,
-                }}>
-                <thead>
-                  {headerGroups.map(headerGroup => (
-                    <tr key={headerGroup.id}>
-                      {canSelectMoves && (
-                        <Box
-                          component="th"
-                          sx={{
-                            width: 36,
-                            minWidth: 36,
-                            maxWidth: 36,
-                            padding: '4px 6px',
-                            borderBottom: 1,
-                            borderBottomColor: 'divider',
-                            textAlign: 'center',
-                          }}>
-                          <Checkbox
-                            size="small"
-                            checked={
-                              rows.length > 0 &&
-                              rows.every((_, i) =>
-                                selectedMoves.has(offset + i),
-                              )
-                            }
-                            indeterminate={
-                              selectedOnPage > 0 && selectedOnPage < rows.length
-                            }
-                            onChange={(_e, checked) => {
-                              const next = new Map(selectedMoves);
-                              if (checked && result != null) {
-                                rows.forEach((_, i) => {
-                                  const globalId = offset + i;
-                                  if (!next.has(globalId)) {
-                                    const moveData = extractMoveDataFromRow(
-                                      result.rows[i],
-                                      result.columns,
-                                    );
-                                    if (moveData != null) {
-                                      next.set(globalId, moveData);
-                                    }
-                                  }
-                                });
-                              } else {
-                                rows.forEach((_, i) => next.delete(offset + i));
-                              }
-                              setSelectedMoves(next);
-                            }}
-                            sx={{p: 0}}
-                          />
-                        </Box>
-                      )}
-                      {headerGroup.headers.map(header => {
-                        const columnDef = header.column.columnDef;
-                        const meta = columnDef.meta as ColumnMeta | undefined;
-                        const isSorted = orderColumn === meta?.colName;
-                        const isAsc =
-                          isSorted &&
-                          orderDirection === OrderDirection.ASCENDING;
-
-                        return (
-                          <Box
-                            component="th"
-                            key={header.id}
-                            onClick={() => handleSort(header.column.id)}
-                            sx={{
-                              width: header.getSize(),
-                              textAlign: meta?.numeric ? 'right' : 'left',
-                              padding: '8px 12px',
-                              borderBottom: 1,
-                              borderBottomColor: 'divider',
-                              fontWeight: 500,
-                              fontSize: '0.875rem',
-                              color: 'text.secondary',
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                            }}>
-                            <Box
-                              sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: meta?.numeric
-                                  ? 'flex-end'
-                                  : 'flex-start',
-                                gap: 0.5,
-                              }}>
-                              {flexRender(
-                                header.column.columnDef.header,
-                                header.getContext(),
-                              )}
-                              {isSorted &&
-                                (isAsc ? (
-                                  <ArrowUpward sx={{fontSize: 16}} />
-                                ) : (
-                                  <ArrowDownward sx={{fontSize: 16}} />
-                                ))}
-                            </Box>
-                          </Box>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </thead>
-                <tbody>
-                  {rows.map((row, rowIndex) => {
-                    const globalId = offset + rowIndex;
-                    const isSelected = selectedMoves.has(globalId);
-                    return (
-                      <Box
-                        component="tr"
-                        key={row.id}
-                        sx={{
-                          backgroundColor: isSelected
-                            ? 'action.selected'
-                            : 'background.paper',
-                          '&:hover': {
-                            backgroundColor: isSelected
-                              ? 'action.selected'
-                              : 'action.hover',
-                          },
-                        }}>
-                        {canSelectMoves && (
-                          <Box
-                            component="td"
-                            sx={{
-                              width: 36,
-                              minWidth: 36,
-                              maxWidth: 36,
-                              padding: '4px 6px',
-                              borderBottom: 1,
-                              borderBottomColor: 'divider',
-                              textAlign: 'center',
-                            }}>
-                            <Checkbox
-                              size="small"
-                              checked={isSelected}
-                              onChange={(_e, checked) => {
-                                const next = new Map(selectedMoves);
-                                if (checked && result != null) {
+            <TableShell
+              fixedLayout
+              minWidth={table.getTotalSize() + (canSelectMoves ? 36 : 0)}
+              label={metadata?.hasOnlySingleMoves ? 'Moves' : 'Move sets'}>
+              <thead>
+                {headerGroups.map(headerGroup => (
+                  <tr key={headerGroup.id}>
+                    {canSelectMoves && (
+                      <th className="select" style={{width: 36}}>
+                        <Checkbox
+                          size="small"
+                          checked={
+                            rows.length > 0 &&
+                            rows.every((_, i) => selectedMoves.has(offset + i))
+                          }
+                          indeterminate={
+                            selectedOnPage > 0 && selectedOnPage < rows.length
+                          }
+                          onChange={(_e, checked) => {
+                            const next = new Map(selectedMoves);
+                            if (checked && result != null) {
+                              rows.forEach((_, i) => {
+                                const globalId = offset + i;
+                                if (!next.has(globalId)) {
                                   const moveData = extractMoveDataFromRow(
-                                    result.rows[rowIndex],
+                                    result.rows[i],
                                     result.columns,
                                   );
                                   if (moveData != null) {
                                     next.set(globalId, moveData);
                                   }
-                                } else {
-                                  next.delete(globalId);
                                 }
-                                setSelectedMoves(next);
-                              }}
-                              sx={{p: 0}}
-                            />
-                          </Box>
-                        )}
-                        {row.getVisibleCells().map(cell => {
-                          const columnDef = cell.column.columnDef;
-                          const meta = columnDef.meta as ColumnMeta | undefined;
-                          return (
-                            <Box
-                              component="td"
-                              key={cell.id}
-                              onClick={copyOnClick}
-                              onKeyDown={copyOnKeyDown}
-                              tabIndex={0}
-                              sx={{
-                                textAlign: meta?.numeric ? 'right' : 'left',
-                                padding: '8px 12px',
-                                borderBottom: 1,
-                                borderBottomColor: 'divider',
-                                fontSize: '0.875rem',
-                                whiteSpace: 'normal',
-                                wordBreak: 'break-word',
-                                overflowWrap: 'anywhere',
-                                cursor: 'pointer',
-                              }}>
-                              {flexRender(
-                                cell.column.columnDef.cell,
-                                cell.getContext(),
-                              )}
-                            </Box>
-                          );
-                        })}
-                      </Box>
-                    );
-                  })}
-                  {rows.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={
-                          (resultColumns.length || 1) + (canSelectMoves ? 1 : 0)
-                        }
-                        style={{
-                          textAlign: 'center',
-                          padding: '24px 12px',
-                          fontSize: '0.875rem',
-                        }}>
-                        <Typography
-                          component="span"
-                          variant="body2"
-                          color="text.secondary">
-                          No {tableHeaderStr} found
-                        </Typography>
-                      </td>
+                              });
+                            } else {
+                              rows.forEach((_, i) => next.delete(offset + i));
+                            }
+                            setSelectedMoves(next);
+                          }}
+                          sx={{p: 0}}
+                          slotProps={{
+                            input: {'aria-label': 'Select all on this page'},
+                          }}
+                        />
+                      </th>
+                    )}
+                    {headerGroup.headers.map(header => {
+                      const columnDef = header.column.columnDef;
+                      const meta = columnDef.meta as ColumnMeta | undefined;
+                      const isSorted = orderColumn === meta?.colName;
+                      const isAsc =
+                        isSorted && orderDirection === OrderDirection.ASCENDING;
+
+                      return (
+                        <th
+                          key={header.id}
+                          className={[
+                            'sortable',
+                            meta?.numeric ? 'num' : '',
+                          ].join(' ')}
+                          style={{width: header.getSize()}}
+                          onClick={() => handleSort(header.column.id)}>
+                          <HeaderLabel
+                            label={flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
+                            sorted={isSorted ? (isAsc ? 'asc' : 'desc') : false}
+                            align={meta?.numeric ? 'right' : 'left'}
+                          />
+                        </th>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </thead>
+              <tbody>
+                {rows.map((row, rowIndex) => {
+                  const globalId = offset + rowIndex;
+                  const isSelected = selectedMoves.has(globalId);
+                  return (
+                    <tr key={row.id} aria-selected={isSelected}>
+                      {canSelectMoves && (
+                        <td className="select">
+                          <Checkbox
+                            size="small"
+                            checked={isSelected}
+                            onChange={(_e, checked) => {
+                              const next = new Map(selectedMoves);
+                              if (checked && result != null) {
+                                const moveData = extractMoveDataFromRow(
+                                  result.rows[rowIndex],
+                                  result.columns,
+                                );
+                                if (moveData != null) {
+                                  next.set(globalId, moveData);
+                                }
+                              } else {
+                                next.delete(globalId);
+                              }
+                              setSelectedMoves(next);
+                            }}
+                            sx={{p: 0}}
+                            slotProps={{
+                              input: {
+                                'aria-label': `Select row ${globalId + 1}`,
+                              },
+                            }}
+                          />
+                        </td>
+                      )}
+                      {row.getVisibleCells().map(cell => {
+                        const columnDef = cell.column.columnDef;
+                        const meta = columnDef.meta as ColumnMeta | undefined;
+                        return (
+                          <td
+                            key={cell.id}
+                            className={[
+                              'group copyable',
+                              meta?.numeric ? 'num' : '',
+                            ].join(' ')}
+                            onClick={copyOnClick}
+                            onKeyDown={copyOnKeyDown}
+                            tabIndex={0}>
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext(),
+                            )}
+                            <CopyCellAffordance />
+                          </td>
+                        );
+                      })}
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </Box>
+                  );
+                })}
+                {rows.length === 0 && (
+                  <tr>
+                    <td
+                      className="empty"
+                      colSpan={
+                        (resultColumns.length || 1) + (canSelectMoves ? 1 : 0)
+                      }>
+                      <EmptyState
+                        compact
+                        title={`No ${tableHeaderStr} found`}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </TableShell>
           )}
 
           {/* Pagination */}

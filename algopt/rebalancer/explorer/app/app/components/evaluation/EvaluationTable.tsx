@@ -2,11 +2,9 @@
 
 import {memo, useCallback, useMemo, useState} from 'react';
 
-import ArrowDownward from '@mui/icons-material/ArrowDownward';
-import ArrowUpward from '@mui/icons-material/ArrowUpward';
-import InfoOutlined from '@mui/icons-material/InfoOutlined';
 import {
   Box,
+  Button,
   Checkbox,
   FormControlLabel,
   IconButton,
@@ -20,6 +18,13 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronRight,
+  FileText,
+  ListTree,
+} from 'lucide-react';
 import type {Column, SortingState} from '@tanstack/react-table';
 
 import CollapsibleText from '@/app/components/evaluation/CollapsibleText';
@@ -28,28 +33,35 @@ import {
   matchesEvaluationFilters,
 } from '@/app/components/evaluation/evaluation-filters';
 import {isRowChanged} from '@/app/components/evaluation/evaluation-penalty';
+import {
+  calculatePercentageChange,
+  formatPercentChange,
+  joinEvaluationRows,
+  rowsHavePenalty,
+  type EvaluationRow,
+} from '@/app/components/evaluation/evaluation-rows';
 import CopyCellAffordance from '@/app/components/CopyCellAffordance';
 import PreciseNumber from '@/app/components/evaluation/PreciseNumber';
-import SpecViewerButton from '@/app/components/evaluation/SpecViewerButton';
-import TreeViewer from '@/app/components/evaluation/TreeViewer';
+import {useDetailPaneActions} from '@/app/components/detail-pane/DetailPaneContext';
 import useCopyOnClick from '@/app/components/useCopyOnClick';
+import HintIcon from '@/app/components/ui/HintIcon';
+import HeaderLabel from '@/app/components/table/HeaderLabel';
+import TableShell from '@/app/components/table/TableShell';
+import {CLAMP_2_SX} from '@/app/components/table/tableSx';
+import {
+  ClipStoreContext,
+  useClipStore,
+} from '@/app/components/evaluation/useClipObserver';
+import {ChangeIcon, changeTone} from '@/app/components/ui/Delta';
+import {EmptyState} from '@/app/components/ui/StateViews';
+import TupleBadge from '@/app/components/ui/TupleBadge';
+import {COLOR, DURATION, TEXT, WEIGHT} from '@/lib/ui-tokens';
 import type {
   Assignment,
   ExpressionResult,
   Filter,
   Handle,
 } from '@/lib/rebalancer-explorer-types';
-import {
-  LINE_COLOR,
-  MUTED_TEXT_COLOR,
-  ROW_HOVER_COLOR,
-  TOTAL_LINE_COLOR,
-} from '@/lib/ui-tokens';
-
-const totalCellStyle = {
-  padding: '10px 16px',
-  borderTop: `2px solid ${TOTAL_LINE_COLOR}`,
-};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,6 +80,8 @@ type EvaluationTableProps = {
   srcExpressions: ExpressionResult[];
   dstExpressions: ExpressionResult[];
   expressionType: 'CONSTRAINT' | 'OBJECTIVE';
+  /** Objective tuple index; null for constraints. */
+  tupleIndex: number | null;
   hideAllUnchangedControl: HideAllUnchangedControl;
   handle: Handle;
   sourceAssignment: Assignment;
@@ -75,45 +89,21 @@ type EvaluationTableProps = {
   evaluationFilters?: Filter[];
   showPenalty: boolean;
   onShowPenaltyChange: (show: boolean) => void;
+  /** Short names of A and B for the column headers, e.g. "Initial". */
+  srcLabel?: string;
+  dstLabel?: string;
+  /** The run's largest tuple index, for the tuple index color. */
+  maxTupleIndex?: number;
+  /** Opened from a link to this tuple: shows unchanged rows too. */
+  focused?: boolean;
 };
-
-/** Merged row joining src and dst expression data. */
-interface EvaluationRow {
-  expressionId: number;
-  name: string;
-  description: string;
-  srcValue: number;
-  dstValue: number;
-  delta: number;
-  percentage: number;
-  // Separated local-search penalty; null when the objective has none.
-  srcPenalty: number | null;
-  dstPenalty: number | null;
-  penaltyDelta: number;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Compute percentage change: (B - A) / |A| * 100.
- * Returns 0 when both are zero, 100 when only A is zero.
- */
-function calculatePercentageChange(src: number, dst: number): number {
-  const delta = dst - src;
-  if (src === 0) {
-    return dst === 0 ? 0 : 100;
-  }
-  return (delta / Math.abs(src)) * 100;
-}
 
 // Penalty value, or a muted "-" when the objective has no penalty.
 function PenaltyValue({value}: {value: number | null}) {
   if (value == null) {
     return (
-      <Box component="span" sx={{color: 'text.secondary'}}>
-        -
+      <Box component="span" sx={{color: COLOR.textTertiary}}>
+        —
       </Box>
     );
   }
@@ -123,24 +113,68 @@ function PenaltyValue({value}: {value: number | null}) {
 // Small muted "(%)" shown beneath the B - A delta. Parenthesized to match the
 // "(%)" sort label in the header. data-copy-skip keeps it out of the cell's
 // click-to-copy text, so copying a B - A cell yields just the value.
-function PercentBeneath({value}: {value: number}) {
+function PercentBeneath({
+  src,
+  dst,
+  percentage,
+}: {
+  src: number;
+  dst: number;
+  percentage: number;
+}) {
+  return (
+    <Typography
+      variant="caption"
+      component="span"
+      data-copy-skip
+      title={src === 0 ? undefined : `${percentage}%`}
+      sx={{
+        lineHeight: 1,
+        fontVariantNumeric: 'tabular-nums',
+        color: COLOR.textTertiary,
+      }}>
+      {`(${formatPercentChange(src, dst, percentage).replace(/-/g, '\u2212')})`}
+    </Typography>
+  );
+}
+
+// B - A for an objective: an arrow beside the colored value, so the direction
+// does not depend on color alone. Down (lower) is better: Rebalancer
+// minimizes.
+/** An objective's change: the direction icon and the signed delta. */
+function ObjectiveDelta({value}: {value: number}) {
+  if (value === 0 || Number.isNaN(value)) {
+    return <PreciseNumber value={value} highlight />;
+  }
   return (
     <Box
       component="span"
-      data-copy-skip
-      sx={{
-        fontSize: '0.6rem',
-        lineHeight: 1,
-        color: 'text.disabled',
-        fontVariantNumeric: 'tabular-nums',
-      }}>
-      {`(${value.toFixed(2)}%)`}
+      sx={{display: 'inline-flex', alignItems: 'center', gap: 0.75}}>
+      <ChangeIcon delta={value} tone={changeTone(value)} />
+      <PreciseNumber value={value} highlight signed />
     </Box>
   );
 }
 
-// A clickable sort target with its own direction arrow, used for the two labels
-// ("B - A" and the smaller, muted "(%)") stacked in the merged B - A header.
+/** The two comparison sides: baseline grey (A), current blue (B). */
+function SideDot({side}: {side: 'A' | 'B'}) {
+  return (
+    <Box
+      component="span"
+      aria-hidden
+      sx={{
+        display: 'inline-block',
+        width: 8,
+        height: 8,
+        mr: 0.75,
+        borderRadius: '50%',
+        verticalAlign: 'middle',
+        bgcolor: side === 'A' ? COLOR.baseline : COLOR.current,
+      }}
+    />
+  );
+}
+
 function SortLabel({
   label,
   column,
@@ -171,11 +205,11 @@ function SortLabel({
         bgcolor: 'transparent',
         font: 'inherit',
         color: 'inherit',
-        ...(secondary && {color: 'text.secondary', fontSize: '0.65rem'}),
+        ...(secondary && {typography: 'caption'}),
       }}>
       {label}
-      {sorted === 'asc' && <ArrowUpward sx={{fontSize: arrowSize}} />}
-      {sorted === 'desc' && <ArrowDownward sx={{fontSize: arrowSize}} />}
+      {sorted === 'asc' && <ArrowUp size={arrowSize} />}
+      {sorted === 'desc' && <ArrowDown size={arrowSize} />}
     </Box>
   );
 }
@@ -193,7 +227,7 @@ const DESCRIPTION_WITH_PENALTY_WIDTH = 200;
 // Name sizes to content (clamped) so short names free width for the auto-width
 // Description column.
 const MIN_NAME_CH = 10;
-const MAX_NAME_CH = 38;
+const MAX_NAME_CH = 44;
 
 // Stacks the B - A value over its smaller "(%)" line, right-aligned. Used in the
 // header, the body cell, and the totals footer so all three line up.
@@ -219,6 +253,7 @@ const EvaluationTable = memo(function EvaluationTable({
   srcExpressions,
   dstExpressions,
   expressionType,
+  tupleIndex,
   hideAllUnchangedControl,
   handle,
   sourceAssignment,
@@ -226,6 +261,10 @@ const EvaluationTable = memo(function EvaluationTable({
   evaluationFilters,
   showPenalty,
   onShowPenaltyChange,
+  srcLabel,
+  dstLabel,
+  maxTupleIndex,
+  focused = false,
 }: EvaluationTableProps) {
   const {
     hideAllUnchanged,
@@ -235,8 +274,15 @@ const EvaluationTable = memo(function EvaluationTable({
     tableIndex,
   } = hideAllUnchangedControl;
 
-  const [hideUnchanged, setHideUnchanged] = useState(hideAllUnchanged);
+  // A table opened from a link to its tuple shows all of its rows, as if
+  // "Show unchanged" had been pressed.
+  const [hideUnchanged, setHideUnchanged] = useState(
+    hideAllUnchanged && !focused,
+  );
+  // The group head folds the table away.
+  const [folded, setFolded] = useState(false);
   const {copyOnClick, copyOnKeyDown, snackbar} = useCopyOnClick();
+  const {open: openPane} = useDetailPaneActions();
 
   const handleTableHideUnchangedChange = useCallback(
     (newState: boolean) => {
@@ -275,41 +321,12 @@ const EvaluationTable = memo(function EvaluationTable({
   const isConstraint = expressionType === 'CONSTRAINT';
 
   // Join src and dst by expression id
-  const allRows = useMemo<EvaluationRow[]>(() => {
-    const dstMap = new Map<number, ExpressionResult>();
-    for (const expr of dstExpressions) {
-      dstMap.set(expr.id, expr);
-    }
-
-    return srcExpressions
-      .map(src => {
-        const dst = dstMap.get(src.id);
-        if (dst == null) {
-          return null;
-        }
-        const delta = dst.value - src.value;
-        const srcPenalty = src.penaltyValue ?? null;
-        const dstPenalty = dst.penaltyValue ?? null;
-        return {
-          expressionId: src.id,
-          name: src.name,
-          description: src.description,
-          srcValue: src.value,
-          dstValue: dst.value,
-          delta,
-          percentage: calculatePercentageChange(src.value, dst.value),
-          srcPenalty,
-          dstPenalty,
-          penaltyDelta: (dstPenalty ?? 0) - (srcPenalty ?? 0),
-        };
-      })
-      .filter((row): row is EvaluationRow => row != null);
-  }, [srcExpressions, dstExpressions]);
-
-  const hasPenalty = useMemo(
-    () => allRows.some(row => row.srcPenalty != null || row.dstPenalty != null),
-    [allRows],
+  const allRows = useMemo(
+    () => joinEvaluationRows(srcExpressions, dstExpressions),
+    [srcExpressions, dstExpressions],
   );
+
+  const hasPenalty = useMemo(() => rowsHavePenalty(allRows), [allRows]);
   const isPenaltyShown = hasPenalty && showPenalty;
 
   // Rows matching the user-selected evaluation filters.
@@ -330,6 +347,12 @@ const EvaluationTable = memo(function EvaluationTable({
         : filteredRows,
     [filteredRows, hideUnchanged, isPenaltyShown],
   );
+
+  const changedCount = useMemo(
+    () => filteredRows.filter(row => isRowChanged(row, isPenaltyShown)).length,
+    [filteredRows, isPenaltyShown],
+  );
+  const unchangedCount = filteredRows.length - changedCount;
 
   // Based on allRows, not the visible rows, so the width holds steady as
   // filters and "hide unchanged" change what's shown.
@@ -372,15 +395,63 @@ const EvaluationTable = memo(function EvaluationTable({
   // Sorting state
   const [sorting, setSorting] = useState<SortingState>([]);
 
+  const openRowPane = useCallback(
+    (row: EvaluationRow, tab: 'spec' | 'tree') =>
+      openPane({
+        kind: 'expression',
+        tab,
+        payload: {
+          ...row,
+          expressionType,
+          tupleIndex,
+          handle,
+          sourceAssignment,
+          destinationAssignment,
+          srcLabel,
+          dstLabel,
+          maxTupleIndex,
+        },
+      }),
+    [
+      openPane,
+      expressionType,
+      tupleIndex,
+      handle,
+      sourceAssignment,
+      destinationAssignment,
+      srcLabel,
+      dstLabel,
+      maxTupleIndex,
+    ],
+  );
+
   // Column definitions
   const columns = useMemo(
     () => [
       columnHelper.accessor('name', {
         header: 'Name',
         cell: info => (
-          <Typography variant="body2" sx={{fontSize: '0.8125rem'}}>
+          <Box
+            component="button"
+            type="button"
+            data-overflow
+            data-pane-open="spec"
+            onClick={() => openRowPane(info.row.original, 'spec')}
+            sx={{
+              ...CLAMP_2_SX,
+              maxWidth: '100%',
+              p: 0,
+              border: 0,
+              bgcolor: 'transparent',
+              font: 'inherit',
+              color: COLOR.textPrimary,
+              fontWeight: WEIGHT.semibold,
+              textAlign: 'left',
+              cursor: 'pointer',
+              '&:hover': {color: COLOR.action, textDecoration: 'underline'},
+            }}>
             {info.getValue()}
-          </Typography>
+          </Box>
         ),
         enableSorting: false,
         meta: {
@@ -390,7 +461,7 @@ const EvaluationTable = memo(function EvaluationTable({
       }),
       columnHelper.accessor('description', {
         header: 'Description',
-        cell: info => <CollapsibleText text={info.getValue()} />,
+        cell: info => <CollapsibleText text={info.getValue()} clampLines={2} />,
         enableSorting: false,
         size: 280,
         meta: {
@@ -399,23 +470,37 @@ const EvaluationTable = memo(function EvaluationTable({
         },
       }),
       columnHelper.accessor('srcValue', {
-        header: 'A',
+        header: () => (
+          <span>
+            <SideDot side="A" />
+            {srcLabel != null ? `A · ${srcLabel}` : 'A'}
+          </span>
+        ),
         cell: info => (
           <PreciseNumber value={info.getValue()} highlight={isConstraint} />
         ),
         meta: {
           numeric: true,
-          tooltip: 'Result of evaluating the expression with assignment A.',
+          headerLabel: 'A',
+          tooltip:
+            'Result of evaluating the expression with assignment A. Click a number to switch between formatted and raw.',
         },
       }),
       columnHelper.accessor('dstValue', {
-        header: 'B',
+        header: () => (
+          <span>
+            <SideDot side="B" />
+            {dstLabel != null ? `B · ${dstLabel}` : 'B'}
+          </span>
+        ),
         cell: info => (
           <PreciseNumber value={info.getValue()} highlight={isConstraint} />
         ),
         meta: {
           numeric: true,
-          tooltip: 'Result of evaluating the expression with assignment B.',
+          headerLabel: 'B',
+          tooltip:
+            'Result of evaluating the expression with assignment B. Click a number to switch between formatted and raw.',
         },
       }),
       columnHelper.accessor('delta', {
@@ -423,7 +508,7 @@ const EvaluationTable = memo(function EvaluationTable({
         // the delta, "(%)" sorts by the hidden percentage column.
         header: ({table: t}) => (
           <Box sx={STACKED_BA_SX}>
-            <SortLabel label="B - A" column={t.getColumn('delta')} />
+            <SortLabel label="B − A" column={t.getColumn('delta')} />
             <SortLabel
               label="(%)"
               column={t.getColumn('percentage')}
@@ -432,20 +517,28 @@ const EvaluationTable = memo(function EvaluationTable({
           </Box>
         ),
         cell: info => {
-          const {delta, percentage} = info.row.original;
+          const {delta, percentage, srcValue, dstValue} = info.row.original;
           return (
             <Box sx={STACKED_BA_SX}>
-              <PreciseNumber value={delta} highlight={!isConstraint} />
-              <PercentBeneath value={percentage} />
+              {isConstraint ? (
+                <PreciseNumber value={delta} highlight={false} />
+              ) : (
+                <ObjectiveDelta value={delta} />
+              )}
+              <PercentBeneath
+                src={srcValue}
+                dst={dstValue}
+                percentage={percentage}
+              />
             </Box>
           );
         },
         meta: {
           numeric: true,
           dualSort: true,
-          headerLabel: 'B - A',
+          headerLabel: 'B − A',
           tooltip:
-            'B - A is the difference between the two assignments, with the percentage change beneath. Click "B - A" or "(%)" in the header to sort by either.',
+            'B - A is the difference between the two assignments, with the percentage change beneath. Click "B - A" or "(%)" in the header to sort by either, and a number to switch between formatted and raw.',
         },
       }),
       // Hidden (see columnVisibility): exists only as the sort target for the
@@ -479,7 +572,7 @@ const EvaluationTable = memo(function EvaluationTable({
           return srcPenalty == null && dstPenalty == null ? (
             <PenaltyValue value={null} />
           ) : (
-            <PreciseNumber value={penaltyDelta} highlight />
+            <PreciseNumber value={penaltyDelta} highlight signed />
           );
         },
         meta: {
@@ -494,17 +587,21 @@ const EvaluationTable = memo(function EvaluationTable({
           const row = info.row.original;
           return (
             <Box sx={{display: 'flex', gap: 0.5}}>
-              <SpecViewerButton
-                name={row.name}
-                expressionType={expressionType}
-                handle={handle}
-              />
-              <TreeViewer
-                expressionId={row.expressionId}
-                handle={handle}
-                sourceAssignment={sourceAssignment}
-                destinationAssignment={destinationAssignment}
-              />
+              <IconButton
+                size="small"
+                aria-label="View spec"
+                title="View spec"
+                onClick={() => openRowPane(row, 'spec')}>
+                <FileText size={16} />
+              </IconButton>
+              <IconButton
+                size="small"
+                aria-label="View tree"
+                title="View tree"
+                data-pane-open="tree"
+                onClick={() => openRowPane(row, 'tree')}>
+                <ListTree size={16} />
+              </IconButton>
             </Box>
           );
         },
@@ -512,13 +609,7 @@ const EvaluationTable = memo(function EvaluationTable({
         enableSorting: false,
       }),
     ],
-    [
-      isConstraint,
-      expressionType,
-      handle,
-      sourceAssignment,
-      destinationAssignment,
-    ],
+    [isConstraint, openRowPane, srcLabel, dstLabel],
   );
 
   const columnVisibility = useMemo(
@@ -545,310 +636,303 @@ const EvaluationTable = memo(function EvaluationTable({
 
   const headerGroups = table.getHeaderGroups();
   const rows = table.getRowModel().rows;
+  const clipStore = useClipStore();
 
   return (
     <Box>
-      {/* Title bar with per-table hide unchanged */}
+      {/* Group head: fold, rank pill, title, counts, per-table penalty and
+          unchanged toggles. */}
       <Box
         sx={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          px: 3,
-          py: 1.5,
-          borderBottom: `1px solid ${LINE_COLOR}`,
+          flexWrap: 'wrap',
+          columnGap: 1.25,
+          rowGap: 0.5,
+          px: 2,
+          py: 1.25,
+          bgcolor: COLOR.bgSurface2,
+          borderBottom: folded ? 0 : `1px solid ${COLOR.borderDefault}`,
         }}>
-        <Typography
-          variant="subtitle1"
-          sx={{fontWeight: 600, fontSize: '1.125rem'}}>
-          {title}
+        <Box
+          sx={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 1,
+            minWidth: 0,
+          }}>
+          <Tooltip title={folded ? 'Show this table' : 'Fold this table'}>
+            <IconButton
+              size="small"
+              aria-expanded={!folded}
+              aria-label={`${folded ? 'Show' : 'Fold'} ${title}`}
+              onClick={() => setFolded(f => !f)}
+              sx={{
+                width: 24,
+                height: 24,
+                ml: -0.75,
+                color: COLOR.textDecorative,
+                '& svg': {
+                  transform: folded ? 'none' : 'rotate(90deg)',
+                  transition: `transform ${DURATION.base}ms`,
+                },
+                '&:hover': {color: COLOR.textSecondary},
+              }}>
+              <ChevronRight size={16} />
+            </IconButton>
+          </Tooltip>
+          {tupleIndex != null && maxTupleIndex != null && maxTupleIndex > 0 && (
+            <TupleBadge tupleIndex={tupleIndex} maxTupleIndex={maxTupleIndex} />
+          )}
+          <Typography
+            component="h3"
+            sx={{fontSize: TEXT.sm, fontWeight: WEIGHT.semibold}}>
+            {title}
+          </Typography>
+        </Box>
+        <Typography variant="caption">
+          {`${changedCount} changed · ${filteredRows.length} total`}
         </Typography>
-        <Box sx={{display: 'flex', alignItems: 'center', columnGap: 2}}>
+        <Box sx={{ml: 'auto', display: 'flex', alignItems: 'center', gap: 1}}>
           {hasPenalty && (
             <Tooltip title="Show the penalty of each objective in this table">
               <FormControlLabel
                 sx={{mr: 0}}
                 control={
                   <Checkbox
-                    size="small"
                     checked={showPenalty}
                     onChange={(_e, checked) => onShowPenaltyChange(checked)}
                   />
                 }
-                label={
-                  <Typography variant="body2" sx={{fontSize: '0.8125rem'}}>
-                    Show penalty
-                  </Typography>
-                }
+                label="Penalty"
               />
             </Tooltip>
           )}
-          <Tooltip
-            title={
-              isPenaltyShown
-                ? 'Hide rows where the two assignments have the same value and the same penalty'
-                : 'Hide rows where the two assignments have the same value'
-            }>
-            <FormControlLabel
-              sx={{mr: 0}}
-              control={
-                <Checkbox
-                  size="small"
-                  checked={hideUnchanged}
-                  onChange={(_e, checked) =>
-                    handleTableHideUnchangedChange(checked)
-                  }
-                />
-              }
-              label={
-                <Typography variant="body2" sx={{fontSize: '0.8125rem'}}>
-                  {`Hide unchanged ${title}`}
-                </Typography>
-              }
-            />
-          </Tooltip>
+          {(!hideUnchanged || unchangedCount > 0) && (
+            <Tooltip
+              title={
+                isPenaltyShown
+                  ? 'Rows where the two assignments have the same value and the same penalty'
+                  : 'Rows where the two assignments have the same value'
+              }>
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => handleTableHideUnchangedChange(!hideUnchanged)}>
+                {hideUnchanged
+                  ? `Show unchanged (${unchangedCount})`
+                  : 'Hide unchanged'}
+              </Button>
+            </Tooltip>
+          )}
         </Box>
       </Box>
 
       {/* Table */}
-      <Box sx={{overflow: 'auto'}}>
-        <table
-          style={{
-            width: '100%',
-            tableLayout: 'fixed',
-            borderCollapse: 'separate',
-            borderSpacing: 0,
-          }}>
-          <thead>
-            {headerGroups.map(headerGroup => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map(header => {
-                  const meta = header.column.columnDef.meta as
-                    | {
-                        numeric?: boolean;
-                        flex?: boolean;
-                        tooltip?: string;
-                        dualSort?: boolean;
-                        headerLabel?: string;
-                      }
-                    | undefined;
-                  // The dual-sort column (B - A / %) handles its own clicks and
-                  // arrows inside its header, so skip the generic ones here.
-                  const isDualSort = meta?.dualSort === true;
-                  const canSort = header.column.getCanSort() && !isDualSort;
-                  const sorted = header.column.getIsSorted();
-                  const headerLabel =
-                    meta?.headerLabel ??
-                    (typeof header.column.columnDef.header === 'string'
-                      ? header.column.columnDef.header
-                      : header.column.id);
+      {!folded && (
+        <ClipStoreContext.Provider value={clipStore}>
+          <TableShell
+            fixedLayout
+            minWidth={isPenaltyShown ? 1240 : 960}
+            label={title}>
+            <thead>
+              {headerGroups.map(headerGroup => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map(header => {
+                    const meta = header.column.columnDef.meta as
+                      | {
+                          numeric?: boolean;
+                          flex?: boolean;
+                          tooltip?: string;
+                          dualSort?: boolean;
+                          headerLabel?: string;
+                        }
+                      | undefined;
+                    // The dual-sort column (B - A / %) handles its own clicks and
+                    // arrows inside its header, so skip the generic ones here.
+                    const isDualSort = meta?.dualSort === true;
+                    const canSort = header.column.getCanSort() && !isDualSort;
+                    const sorted = header.column.getIsSorted();
+                    const headerLabel =
+                      meta?.headerLabel ??
+                      (typeof header.column.columnDef.header === 'string'
+                        ? header.column.columnDef.header
+                        : header.column.id);
 
-                  return (
-                    <th
-                      key={header.id}
-                      style={{
-                        width: meta?.flex
-                          ? isPenaltyShown
-                            ? DESCRIPTION_WITH_PENALTY_WIDTH
-                            : 'auto'
-                          : meta?.numeric
+                    return (
+                      <th
+                        key={header.id}
+                        className={[
+                          meta?.numeric ? 'num' : '',
+                          canSort ? 'sortable' : '',
+                        ].join(' ')}
+                        style={{
+                          width: meta?.flex
                             ? isPenaltyShown
-                              ? NUMBER_COL_WITH_PENALTY_WIDTH
-                              : NUMBER_COL_WIDTH
-                            : header.column.id === 'name'
-                              ? nameColWidth
-                              : header.getSize(),
-                        textAlign: meta?.numeric ? 'right' : 'left',
-                        padding: '10px 16px',
-                        borderBottom: `1px solid ${LINE_COLOR}`,
-                        fontWeight: 500,
-                        fontSize: '0.875rem',
-                        color: MUTED_TEXT_COLOR,
-                        cursor: canSort ? 'pointer' : 'default',
-                        userSelect: 'none',
-                      }}
-                      onClick={
-                        canSort
-                          ? header.column.getToggleSortingHandler()
-                          : undefined
-                      }>
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: meta?.numeric
-                            ? 'flex-end'
-                            : 'flex-start',
-                          gap: 0.5,
-                        }}>
+                              ? DESCRIPTION_WITH_PENALTY_WIDTH
+                              : 'auto'
+                            : meta?.numeric
+                              ? isPenaltyShown
+                                ? NUMBER_COL_WITH_PENALTY_WIDTH
+                                : NUMBER_COL_WIDTH
+                              : header.column.id === 'name'
+                                ? nameColWidth
+                                : header.getSize(),
+                        }}
+                        onClick={
+                          canSort
+                            ? header.column.getToggleSortingHandler()
+                            : undefined
+                        }>
+                        <HeaderLabel
+                          label={flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
+                          hint={meta?.tooltip}
+                          hintLabel={headerLabel}
+                          sorted={isDualSort ? false : sorted}
+                          align={meta?.numeric ? 'right' : 'left'}
+                        />
+                      </th>
+                    );
+                  })}
+                </tr>
+              ))}
+            </thead>
+            <tbody>
+              {rows.map(row => (
+                <tr key={row.id} data-pane-row={row.original.expressionId}>
+                  {row.getVisibleCells().map(cell => {
+                    const meta = cell.column.columnDef.meta as
+                      {numeric?: boolean} | undefined;
+                    const copyable =
+                      cell.column.id !== 'actions' && cell.column.id !== 'name';
+                    return (
+                      <td
+                        key={cell.id}
+                        className={[
+                          copyable ? 'group copyable' : '',
+                          meta?.numeric ? 'num' : '',
+                        ].join(' ')}
+                        onClick={copyable ? copyOnClick : undefined}
+                        onKeyDown={copyable ? copyOnKeyDown : undefined}
+                        tabIndex={copyable ? 0 : undefined}>
                         {flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
                         )}
-                        {meta?.tooltip != null && (
-                          <Tooltip title={meta.tooltip}>
-                            <IconButton
-                              aria-label={`Help: ${headerLabel}`}
-                              disableRipple
-                              onClick={e => e.stopPropagation()}
-                              sx={{
-                                p: 0,
-                                color: 'text.disabled',
-                                cursor: 'help',
-                              }}>
-                              <InfoOutlined sx={{fontSize: 14}} />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        {!isDualSort && sorted === 'asc' && (
-                          <ArrowUpward sx={{fontSize: 16}} />
-                        )}
-                        {!isDualSort && sorted === 'desc' && (
-                          <ArrowDownward sx={{fontSize: 16}} />
-                        )}
-                      </Box>
-                    </th>
-                  );
-                })}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {rows.map(row => (
-              <tr
-                key={row.id}
-                style={{backgroundColor: 'white'}}
-                onMouseEnter={e => {
-                  e.currentTarget.style.backgroundColor = ROW_HOVER_COLOR;
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.backgroundColor = 'white';
-                }}>
-                {row.getVisibleCells().map(cell => {
-                  const meta = cell.column.columnDef.meta as
-                    {numeric?: boolean} | undefined;
-                  const copyable = cell.column.id !== 'actions';
-                  return (
-                    <td
-                      key={cell.id}
-                      className={copyable ? 'group' : undefined}
-                      onClick={copyable ? copyOnClick : undefined}
-                      onKeyDown={copyable ? copyOnKeyDown : undefined}
-                      tabIndex={copyable ? 0 : undefined}
-                      style={{
-                        position: copyable ? 'relative' : undefined,
-                        textAlign: meta?.numeric ? 'right' : 'left',
-                        paddingTop: 10,
-                        paddingBottom: 10,
-                        paddingLeft: 16,
-                        paddingRight: copyable ? 24 : 16,
-                        borderBottom: `1px solid ${LINE_COLOR}`,
-                        fontSize: '0.875rem',
-                        whiteSpace: 'normal',
-                        wordBreak: 'break-word',
-                        overflowWrap: 'anywhere',
-                        cursor: copyable ? 'pointer' : undefined,
-                      }}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                      {copyable && <CopyCellAffordance />}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <td
-                  colSpan={table.getVisibleLeafColumns().length}
-                  style={{
-                    textAlign: 'center',
-                    padding: '24px 12px',
-                    color: '#999',
-                    fontSize: '0.875rem',
-                  }}>
-                  {hideUnchanged
-                    ? 'All rows are unchanged'
-                    : 'No evaluation results'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-          <tfoot>
-            <tr>
-              {/* Name */}
-              <td style={totalCellStyle}>
-                <Typography
-                  variant="body2"
-                  sx={{fontWeight: 600, fontSize: '0.8125rem'}}>
-                  Total
-                </Typography>
-              </td>
-              {/* Description */}
-              <td style={totalCellStyle}>
-                <Typography
-                  variant="body2"
-                  sx={{color: 'text.secondary', fontSize: '0.75rem'}}>
-                  Sum of the rows shown above. % is recomputed from the A and B
-                  totals.
-                </Typography>
-              </td>
-              {/* A */}
-              <td style={{...totalCellStyle, textAlign: 'right'}}>
-                <PreciseNumber
-                  value={totals.srcTotal}
-                  highlight={isConstraint}
-                />
-              </td>
-              {/* B */}
-              <td style={{...totalCellStyle, textAlign: 'right'}}>
-                <PreciseNumber
-                  value={totals.dstTotal}
-                  highlight={isConstraint}
-                />
-              </td>
-              {/* B - A, with % beneath */}
-              <td style={{...totalCellStyle, textAlign: 'right'}}>
-                <Box sx={STACKED_BA_SX}>
-                  <PreciseNumber
-                    value={totals.deltaTotal}
-                    highlight={!isConstraint}
-                  />
-                  <PercentBeneath
-                    value={Math.round(totals.percentTotal * 100) / 100}
-                  />
-                </Box>
-              </td>
-              {isPenaltyShown && (
-                <>
-                  {/* Penalty A */}
-                  <td style={{...totalCellStyle, textAlign: 'right'}}>
-                    <PreciseNumber
-                      value={totals.srcPenaltyTotal}
-                      highlight={false}
+                        {copyable && <CopyCellAffordance />}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td
+                    className="empty"
+                    colSpan={table.getVisibleLeafColumns().length}>
+                    <EmptyState
+                      compact
+                      title={
+                        hideUnchanged
+                          ? 'All rows are unchanged'
+                          : 'No evaluation results'
+                      }
                     />
                   </td>
-                  {/* Penalty B */}
-                  <td style={{...totalCellStyle, textAlign: 'right'}}>
-                    <PreciseNumber
-                      value={totals.dstPenaltyTotal}
-                      highlight={false}
-                    />
-                  </td>
-                  {/* Penalty B - A */}
-                  <td style={{...totalCellStyle, textAlign: 'right'}}>
-                    <PreciseNumber value={totals.penaltyDeltaTotal} highlight />
-                  </td>
-                </>
+                </tr>
               )}
-              {/* Actions */}
-              <td style={totalCellStyle} />
-            </tr>
-          </tfoot>
-        </table>
-      </Box>
+            </tbody>
+            {rows.length > 0 && (
+              <tfoot>
+                <tr>
+                  {/* Name */}
+                  <td>
+                    <Box
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                      }}>
+                      <Typography variant="subtitle2" component="span">
+                        Total
+                      </Typography>
+                      <HintIcon
+                        title="Sum of the rows shown above. % is recomputed from the A and B totals."
+                        label="Help: Total"
+                      />
+                    </Box>
+                  </td>
+                  {/* Description */}
+                  <td />
+                  {/* A */}
+                  <td className="num">
+                    <PreciseNumber
+                      value={totals.srcTotal}
+                      highlight={isConstraint}
+                    />
+                  </td>
+                  {/* B */}
+                  <td className="num">
+                    <PreciseNumber
+                      value={totals.dstTotal}
+                      highlight={isConstraint}
+                    />
+                  </td>
+                  {/* B - A, with % beneath */}
+                  <td className="num">
+                    <Box sx={STACKED_BA_SX}>
+                      {isConstraint ? (
+                        <PreciseNumber
+                          value={totals.deltaTotal}
+                          highlight={false}
+                        />
+                      ) : (
+                        <ObjectiveDelta value={totals.deltaTotal} />
+                      )}
+                      <PercentBeneath
+                        src={totals.srcTotal}
+                        dst={totals.dstTotal}
+                        percentage={totals.percentTotal}
+                      />
+                    </Box>
+                  </td>
+                  {isPenaltyShown && (
+                    <>
+                      {/* Penalty A */}
+                      <td className="num">
+                        <PreciseNumber
+                          value={totals.srcPenaltyTotal}
+                          highlight={false}
+                        />
+                      </td>
+                      {/* Penalty B */}
+                      <td className="num">
+                        <PreciseNumber
+                          value={totals.dstPenaltyTotal}
+                          highlight={false}
+                        />
+                      </td>
+                      {/* Penalty B - A */}
+                      <td className="num">
+                        <PreciseNumber
+                          value={totals.penaltyDeltaTotal}
+                          highlight
+                          signed
+                        />
+                      </td>
+                    </>
+                  )}
+                  {/* Actions */}
+                  <td />
+                </tr>
+              </tfoot>
+            )}
+          </TableShell>
+        </ClipStoreContext.Provider>
+      )}
       {snackbar}
     </Box>
   );

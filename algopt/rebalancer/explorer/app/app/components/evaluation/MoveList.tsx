@@ -2,20 +2,14 @@
 
 import {useState} from 'react';
 
-import {Box, Chip, IconButton, TextField, Tooltip} from '@mui/material';
-import {Plus} from 'lucide-react';
+import {Box, IconButton, TextField, Tooltip} from '@mui/material';
+import {Plus, X} from 'lucide-react';
+
+import Tag from '@/app/components/ui/Tag';
 
 import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
-import {CHIP_WORD_BREAK_SX} from '@/lib/format';
 
 import EntityTypeahead from './EntityTypeahead';
-
-function capitalize(s: string): string {
-  if (s.length === 0) {
-    return s;
-  }
-  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-}
 
 interface Move {
   variable: string;
@@ -61,41 +55,31 @@ export default function MoveList({moves, onChange}: MoveListProps) {
           }}>
           <div className="flex flex-wrap gap-1">
             {moves.map((move, index) => (
-              <Chip
-                key={`${move.variable}|${move.container}`}
-                label={
-                  <span>
-                    Move <strong>{move.variable}</strong> to{' '}
-                    <strong>{move.container}</strong>
-                  </span>
-                }
-                size="small"
-                variant="outlined"
-                // Chips default to user-select:none; re-enable so the move
-                // text can be selected and copied (e.g. to share or reuse).
-                sx={{
-                  ...CHIP_WORD_BREAK_SX,
-                  userSelect: 'text',
-                  '& .MuiChip-label': {
-                    ...CHIP_WORD_BREAK_SX['& .MuiChip-label'],
-                    userSelect: 'text',
-                    cursor: 'text',
-                  },
-                }}
-                onDelete={() => {
-                  onChange(moves.filter((_, i) => i !== index));
-                }}
-              />
+              <Tag
+                key={`${index}|${move.variable}|${move.container}`}
+                mono
+                sx={{userSelect: 'text', gap: 0.5, pr: 0.25}}>
+                <span>
+                  {move.variable} → {move.container}
+                </span>
+                <IconButton
+                  size="small"
+                  aria-label={`Remove move ${move.variable} to ${move.container}`}
+                  onClick={() => onChange(moves.filter((_, i) => i !== index))}
+                  sx={{p: 0.25, color: 'text.disabled'}}>
+                  <X size={12} />
+                </IconButton>
+              </Tag>
             ))}
           </div>
         </Box>
       )}
-      <div className="grid grid-cols-[1fr_1fr_max-content] gap-2 items-end mt-2">
+      <div className="mt-2 grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_1fr_max-content]">
         {variableName != null && containerName != null ? (
           <>
             <EntityTypeahead
               entity={variableName}
-              label={capitalize(variableName)}
+              label={variableName}
               value={variable}
               onChange={setVariable}
             />
@@ -117,9 +101,10 @@ export default function MoveList({moves, onChange}: MoveListProps) {
             <IconButton
               size="small"
               color="primary"
+              aria-label="Add move"
               disabled={!canAdd}
               onClick={handleAdd}>
-              <Plus className="size-5" />
+              <Plus size={18} />
             </IconButton>
           </span>
         </Tooltip>

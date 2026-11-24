@@ -1,11 +1,19 @@
 'use client';
 
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 
-import {Alert, Box, CircularProgress} from '@mui/material';
 import {useSearchParams} from 'next/navigation';
 
-import {toThriftAssignment} from '@/lib/assignment';
+import {
+  useDetailPane,
+  useDetailPaneActions,
+} from '@/app/components/detail-pane/DetailPaneContext';
+import {Box} from '@mui/material';
+
+import UpdatingOverlay from '@/app/components/UpdatingOverlay';
+import PageHead, {PageContainer} from '@/app/components/shell/PageHead';
+import {ErrorState, LoadingState} from '@/app/components/ui/StateViews';
+import {assignmentShortLabel, toThriftAssignment} from '@/lib/assignment';
 import {mergeOverrides} from '@/lib/move-selection-utils';
 import {useUrlStateSync} from '@/lib/url-state';
 
@@ -15,7 +23,9 @@ import {buildTableDescriptors} from '@/app/components/evaluation/ConstraintsObje
 import {
   buildCOSearchParams,
   parseCOSearchParams,
+  type CODetailState,
 } from '@/app/components/evaluation/ConstraintsObjectivesView.url';
+import {joinEvaluationRows} from '@/app/components/evaluation/evaluation-rows';
 import EvaluationSection from '@/app/components/evaluation/EvaluationSection';
 import {
   getFilterRuleColumn,
@@ -25,9 +35,14 @@ import MoveSetsTable, {
   type MoveSetsViewState,
 } from '@/app/components/evaluation/MoveSetsTable';
 import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
+import {changedObjectiveNames} from '@/lib/overview';
 import {useRebalancerHandle} from '@/lib/contexts/RebalancerHandleContext';
 import {fetchEvaluation} from '@/lib/rebalancer-explorer-api';
 import type {EvaluationResult, Filter} from '@/lib/rebalancer-explorer-types';
+import {ExpressionType} from '@/lib/rebalancer-explorer-types';
+
+// Change columns the moves table starts with, at most.
+const MAX_DEFAULT_MOVE_OBJECTIVES = 4;
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -176,24 +191,46 @@ export default function ConstraintsObjectivesView() {
     }
   }
 
-  // Sync all state to URL search params
-  useUrlStateSync(
-    () =>
-      buildCOSearchParams(
-        assignments,
-        hideAllUnchanged,
-        evalFilters,
-        moveSetsState,
-      ),
-    [assignments, hideAllUnchanged, evalFilters, moveSetsState],
+  // The moves table starts with a change column for each objective that
+  // changed between A and B (in tuple order), so every move shows what it
+  // did. A URL that chose the objectives, even none, keeps its choice.
+  const [defaultObjectivesDone, setDefaultObjectivesDone] = useState(
+    urlState.msObjectivesSet,
   );
+  if (
+    !defaultObjectivesDone &&
+    metadata != null &&
+    srcEvaluation != null &&
+    dstEvaluation != null
+  ) {
+    setDefaultObjectivesDone(true);
+    if (
+      (metadata.canDisplayObjChangesInMoveSetsTable ?? false) &&
+      moveSetsState.objectives.length === 0
+    ) {
+      const changed = changedObjectiveNames(
+        srcEvaluation.expressions,
+        dstEvaluation.expressions,
+        MAX_DEFAULT_MOVE_OBJECTIVES,
+      );
+      if (changed.length > 0) {
+        setMoveSetsState(prev => ({...prev, objectives: changed}));
+      }
+    }
+  }
 
-  // Fetch evaluations when assignments or handle change
+  const {open: openPane} = useDetailPaneActions();
+
+  // Fetch evaluations when assignments or handle change. Only the latest
+  // request may update state, so a slow earlier response cannot overwrite a
+  // newer one.
+  const requestId = useRef(0);
   const doFetch = useCallback(async () => {
     if (handle == null) {
       return;
     }
 
+    const id = ++requestId.current;
     setLoading(true);
     setError(null);
 
@@ -202,16 +239,24 @@ export default function ConstraintsObjectivesView() {
         fetchEvaluation(handle, toThriftAssignment(assignments.src)),
         fetchEvaluation(handle, toThriftAssignment(assignments.dst)),
       ]);
+      if (id !== requestId.current) {
+        return;
+      }
       setSrcEvaluation(srcResp.result);
       setDstEvaluation(dstResp.result);
     } catch (err: unknown) {
+      if (id !== requestId.current) {
+        return;
+      }
       setError(
         err instanceof Error ? err.message : 'Failed to fetch evaluation',
       );
       setSrcEvaluation(null);
       setDstEvaluation(null);
     } finally {
-      setLoading(false);
+      if (id === requestId.current) {
+        setLoading(false);
+      }
     }
   }, [handle, assignments]);
 
@@ -231,13 +276,99 @@ export default function ConstraintsObjectivesView() {
     () => toThriftAssignment(assignments.src),
     [assignments.src],
   );
+  const srcLabel = assignmentShortLabel(assignments.src);
+  const dstLabel = assignmentShortLabel(assignments.dst);
+  const maxTupleIndex = useMemo(
+    () => Math.max(0, ...tableDescriptors.map(d => d.tupleIndex)),
+    [tableDescriptors],
+  );
   const destinationAssignment = useMemo(
     () => toThriftAssignment(assignments.dst),
     [assignments.dst],
   );
 
+  // The detail pane shows values for the A/B pair it was opened with; close
+  // it when either assignment changes.
+  const {close: closePane} = useDetailPaneActions();
+
+  // A link with `detailExpr` opens that expression's pane once the first
+  // evaluation arrives; an id that is not in the results is ignored.
+  const pendingDetail = useRef(
+    urlState.detailExpr != null
+      ? {expressionId: urlState.detailExpr, tab: urlState.detailTab}
+      : null,
+  );
+  useEffect(() => {
+    const pending = pendingDetail.current;
+    if (
+      pending == null ||
+      handle == null ||
+      srcEvaluation == null ||
+      dstEvaluation == null
+    ) {
+      return;
+    }
+    pendingDetail.current = null;
+    const src = srcEvaluation.expressions.find(
+      e => e.id === pending.expressionId,
+    );
+    const dst = dstEvaluation.expressions.find(
+      e => e.id === pending.expressionId,
+    );
+    if (src == null || dst == null) {
+      return;
+    }
+    const [row] = joinEvaluationRows([src], [dst]);
+    const isConstraint = src.type === ExpressionType.CONSTRAINT;
+    openPane({
+      kind: 'expression',
+      tab: pending.tab,
+      payload: {
+        ...row,
+        expressionType: isConstraint ? 'CONSTRAINT' : 'OBJECTIVE',
+        tupleIndex: isConstraint ? null : (src.tupleIndex ?? 0),
+        handle,
+        sourceAssignment,
+        destinationAssignment,
+        srcLabel,
+        dstLabel,
+        maxTupleIndex,
+      },
+    });
+  }, [
+    handle,
+    srcEvaluation,
+    dstEvaluation,
+    sourceAssignment,
+    destinationAssignment,
+    openPane,
+    srcLabel,
+    dstLabel,
+    maxTupleIndex,
+  ]);
+  const isFirstAssignmentRender = useRef(true);
+  useEffect(() => {
+    if (isFirstAssignmentRender.current) {
+      isFirstAssignmentRender.current = false;
+      return;
+    }
+    closePane();
+  }, [sourceAssignment, destinationAssignment, closePane]);
+
   return (
-    <div className="p-4 space-y-4">
+    <PageContainer>
+      <PageHead
+        title={'Constraints & Objectives'}
+        sub={
+          'Evaluate constraints and objectives w.r.t. different assignments: A is the baseline, B the assignment compared with it.'
+        }
+      />
+      <COUrlSync
+        assignments={assignments}
+        hideAllUnchanged={hideAllUnchanged}
+        evalFilters={evalFilters}
+        moveSetsState={moveSetsState}
+      />
       <AssignmentCard
         assignments={assignments}
         onAssignmentsChange={setAssignments}
@@ -256,48 +387,85 @@ export default function ConstraintsObjectivesView() {
         />
       )}
 
-      {/* Loading overlay */}
-      {loading && (
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            py: 6,
-          }}>
-          <CircularProgress size={40} />
-          <Box sx={{ml: 2, color: 'text.secondary'}}>
-            Evaluating assignments...
-          </Box>
-        </Box>
+      {/* First load only; later updates dim the current results instead. */}
+      {loading && srcEvaluation == null && (
+        <LoadingState label="Evaluating assignments..." />
       )}
 
       {/* Error alert */}
-      {error != null && (
-        <Alert severity="error" sx={{mt: 2}}>
-          {error}
-        </Alert>
-      )}
+      {error != null && <ErrorState>{error}</ErrorState>}
 
       {/* Constraints & Objectives section */}
-      {!loading &&
-        error == null &&
+      {error == null &&
         handle != null &&
         srcEvaluation != null &&
         dstEvaluation != null && (
-          <EvaluationSection
-            srcEvaluation={srcEvaluation}
-            dstEvaluation={dstEvaluation}
-            tableDescriptors={tableDescriptors}
-            handle={handle}
-            sourceAssignment={sourceAssignment}
-            destinationAssignment={destinationAssignment}
-            hideAllUnchanged={hideAllUnchanged}
-            onHideAllUnchangedChange={setHideAllUnchanged}
-            evalFilters={evalFilters}
-            onEvalFiltersChange={setEvalFilters}
-          />
+          <Box sx={{position: 'relative'}} aria-busy={loading}>
+            {loading && (
+              <UpdatingOverlay label="Evaluating assignments..." floating />
+            )}
+            {/* Rows show the previous A/B until the new results arrive, so
+                they cannot open the pane meanwhile. */}
+            <div inert={loading}>
+              <EvaluationSection
+                srcEvaluation={srcEvaluation}
+                dstEvaluation={dstEvaluation}
+                tableDescriptors={tableDescriptors}
+                handle={handle}
+                sourceAssignment={sourceAssignment}
+                destinationAssignment={destinationAssignment}
+                hideAllUnchanged={hideAllUnchanged}
+                onHideAllUnchangedChange={setHideAllUnchanged}
+                evalFilters={evalFilters}
+                onEvalFiltersChange={setEvalFilters}
+                srcLabel={srcLabel}
+                dstLabel={dstLabel}
+                focusTupleIndex={urlState.focusTuple}
+              />
+            </div>
+          </Box>
         )}
-    </div>
+    </PageContainer>
   );
+}
+
+/**
+ * Keeps all C&O state, including the open expression pane, in the shareable
+ * URL. Only this component re-renders when the pane opens, switches or
+ * closes, not the whole view.
+ */
+function COUrlSync({
+  assignments,
+  hideAllUnchanged,
+  evalFilters,
+  moveSetsState,
+}: {
+  assignments: Assignments;
+  hideAllUnchanged: boolean;
+  evalFilters: Filter[];
+  moveSetsState: MoveSetsViewState;
+}) {
+  const {content} = useDetailPane();
+  const expressionId =
+    content?.kind === 'expression' ? content.payload.expressionId : null;
+  const tab = content?.kind === 'expression' ? content.tab : null;
+  useUrlStateSync(() => {
+    const detail: CODetailState | null =
+      expressionId != null && tab != null ? {expressionId, tab} : null;
+    return buildCOSearchParams(
+      assignments,
+      hideAllUnchanged,
+      evalFilters,
+      moveSetsState,
+      detail,
+    );
+  }, [
+    assignments,
+    hideAllUnchanged,
+    evalFilters,
+    moveSetsState,
+    expressionId,
+    tab,
+  ]);
+  return null;
 }

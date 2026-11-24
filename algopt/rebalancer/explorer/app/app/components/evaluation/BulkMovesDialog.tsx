@@ -10,9 +10,12 @@ import {
   DialogContent,
   DialogTitle,
   TextField,
+  useMediaQuery,
+  type Theme,
 } from '@mui/material';
 
 import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
+import {MONO_TEXT} from '@/lib/ui-tokens';
 
 import type {UIAssignment} from './AssignmentCard';
 
@@ -40,6 +43,9 @@ export default function BulkMovesDialog({
     [],
   );
 
+  const fullScreen = useMediaQuery((theme: Theme) =>
+    theme.breakpoints.down('sm'),
+  );
   const [text, setText] = useState(initialText);
   const [error, setError] = useState<string | null>(null);
   const [temporaryOverrides, setTemporaryOverrides] = useState(
@@ -72,7 +78,12 @@ export default function BulkMovesDialog({
   };
 
   return (
-    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog
+      open
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      fullScreen={fullScreen}>
       <DialogTitle>Bulk moves editor</DialogTitle>
       <DialogContent>
         {error != null && (
@@ -89,7 +100,10 @@ export default function BulkMovesDialog({
           placeholder={`Enter one move per line in format: {${variableName}} {destination ${containerName}}`}
           value={text}
           onChange={e => handleTextChange(e.target.value)}
-          sx={{mt: 1}}
+          sx={{
+            mt: 1,
+            '& textarea': MONO_TEXT,
+          }}
         />
       </DialogContent>
       <DialogActions>

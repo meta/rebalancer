@@ -28,12 +28,28 @@ export interface ParsedURLState {
   msPartition: string | null;
   msScope: string | null;
   msObjectives: string[];
+  /** Whether the URL chose the move table's objectives (even none). */
+  msObjectivesSet: boolean;
   msFilters: Filter[];
   msOffset: number;
   msPageSize: number;
   msOrderColumn: string | null;
   msOrderDirection: OrderDirection;
   msMinimized: boolean;
+  /** Expression open in the detail pane, if any. */
+  detailExpr: number | null;
+  detailTab: 'spec' | 'tree';
+  /**
+   * Tuple index to scroll to and show once, from a Summary link. It is not
+   * written back to the URL.
+   */
+  focusTuple: number | null;
+}
+
+/** The detail pane state written to the URL; null when it is closed. */
+export interface CODetailState {
+  expressionId: number;
+  tab: 'spec' | 'tree';
 }
 
 export const VALID_BASES = new Set(['INITIAL', 'FINAL', 'INTERMEDIATE']);
@@ -76,12 +92,24 @@ export function parseCOSearchParams(
     msPartition: asString(parsed.msPartition),
     msScope: asString(parsed.msScope),
     msObjectives: asArray<string>(parsed.msObjectives, []),
+    msObjectivesSet: parsed.msObjectives !== undefined,
     msFilters: normalizeFilters(parsed.msFilters),
     msOffset: safeInt(parsed.msOffset, 0),
     msPageSize: safeInt(parsed.msPageSize, MS_DEFAULT_PAGE_SIZE),
     msOrderColumn: asString(parsed.msOrderCol),
     msOrderDirection: safeInt(parsed.msOrderDir, 0) as OrderDirection,
     msMinimized: parsed.msMinimized !== '0',
+    detailExpr:
+      asString(parsed.detailExpr) != null &&
+      Number.isFinite(Number(parsed.detailExpr))
+        ? Number(parsed.detailExpr)
+        : null,
+    detailTab: parsed.detailTab === 'tree' ? 'tree' : 'spec',
+    focusTuple:
+      asString(parsed.focusTuple) != null &&
+      Number.isInteger(Number(parsed.focusTuple))
+        ? Number(parsed.focusTuple)
+        : null,
   };
 }
 
@@ -94,6 +122,7 @@ export function buildCOSearchParams(
   hideAllUnchanged: boolean,
   evalFilters: Filter[],
   ms: MoveSetsViewState,
+  detail: CODetailState | null = null,
 ): string {
   const obj: Record<string, unknown> = {};
 
@@ -160,6 +189,14 @@ export function buildCOSearchParams(
   }
   if (!ms.isMinimized) {
     obj.msMinimized = '0';
+  }
+
+  // Detail pane
+  if (detail != null) {
+    obj.detailExpr = detail.expressionId;
+    if (detail.tab === 'tree') {
+      obj.detailTab = 'tree';
+    }
   }
 
   return stringifyQs(obj);

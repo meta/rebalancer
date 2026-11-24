@@ -7,8 +7,24 @@ import {Autocomplete, TextField} from '@mui/material';
 import {useRebalancerHandle} from '@/lib/contexts/RebalancerHandleContext';
 import {AUTOCOMPLETE_WORD_BREAK_PROPS} from '@/lib/format';
 import {fetchTypeahead} from '@/lib/rebalancer-explorer-api';
+import {MONO_TEXT} from '@/lib/ui-tokens';
 
 const TYPEAHEAD_LIMIT = 10;
+
+// Entity names are identifiers: show options in mono and let long ones wrap.
+const TYPEAHEAD_SLOT_PROPS = {
+  listbox: {
+    sx: {
+      ...AUTOCOMPLETE_WORD_BREAK_PROPS.listbox.sx,
+      '& .MuiAutocomplete-option': {
+        ...AUTOCOMPLETE_WORD_BREAK_PROPS.listbox.sx[
+          '& .MuiAutocomplete-option'
+        ],
+        ...MONO_TEXT,
+      },
+    },
+  },
+} as const;
 const DEBOUNCE_MS = 200;
 
 interface EntityTypeaheadProps {
@@ -91,7 +107,7 @@ export default function EntityTypeahead({
       filterOptions={x => x}
       renderInput={params => <TextField {...params} label={label} />}
       noOptionsText="No matches"
-      slotProps={AUTOCOMPLETE_WORD_BREAK_PROPS}
+      slotProps={TYPEAHEAD_SLOT_PROPS}
     />
   );
 }

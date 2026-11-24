@@ -11,7 +11,7 @@ import {
   MenuItem,
   Tooltip,
 } from '@mui/material';
-import {Edit, MoreVertical, RotateCcw, Shuffle} from 'lucide-react';
+import {MoreVertical, Pencil as Edit, RotateCcw, Shuffle} from 'lucide-react';
 
 import {useRebalancerHandle} from '@/lib/contexts/RebalancerHandleContext';
 import {fetchMovesBetween} from '@/lib/rebalancer-explorer-api';
@@ -79,21 +79,35 @@ export default function AssignmentSelectorMenu({
   return (
     <>
       <Tooltip title="More actions">
-        <IconButton size="small" onClick={e => setAnchorEl(e.currentTarget)}>
-          <MoreVertical className="size-4" />
+        <IconButton
+          size="small"
+          aria-label="More actions"
+          onClick={e => setAnchorEl(e.currentTarget)}>
+          <MoreVertical size={16} />
         </IconButton>
       </Tooltip>
 
-      <Menu anchorEl={anchorEl} open={menuOpen} onClose={handleClose}>
+      <Menu
+        anchorEl={anchorEl}
+        open={menuOpen}
+        onClose={handleClose}
+        anchorOrigin={{vertical: 'bottom', horizontal: 'right'}}
+        transformOrigin={{vertical: 'top', horizontal: 'right'}}
+        slotProps={{paper: {sx: {width: 300}}}}>
         <MenuItem
           disabled={assignment.overrides.length === 0}
           onClick={handleClearAllMoves}>
           <ListItemIcon>
-            <RotateCcw className="size-4" />
+            <RotateCcw size={16} />
           </ListItemIcon>
           <ListItemText
             primary="Clear all moves"
             secondary="Clears all the move modifiers listed below"
+            title="Clears all the move modifiers listed below"
+            slotProps={{
+              primary: {variant: 'body2'},
+              secondary: {noWrap: true, variant: 'caption'},
+            }}
           />
         </MenuItem>
 
@@ -104,22 +118,32 @@ export default function AssignmentSelectorMenu({
             {loadingFinalMoves ? (
               <CircularProgress size={16} />
             ) : (
-              <Shuffle className="size-4" />
+              <Shuffle size={16} />
             )}
           </ListItemIcon>
           <ListItemText
             primary="Show final moves"
             secondary="Shows the final assignment as a series of moves applied on top of the initial assignment"
+            title="Shows the final assignment as a series of moves applied on top of the initial assignment"
+            slotProps={{
+              primary: {variant: 'body2'},
+              secondary: {noWrap: true, variant: 'caption'},
+            }}
           />
         </MenuItem>
 
         <MenuItem onClick={handleBulkEditor}>
           <ListItemIcon>
-            <Edit className="size-4" />
+            <Edit size={16} />
           </ListItemIcon>
           <ListItemText
             primary="Bulk moves editor"
             secondary="Opens a dialog for editing moves in bulk as text"
+            title="Opens a dialog for editing moves in bulk as text"
+            slotProps={{
+              primary: {variant: 'body2'},
+              secondary: {noWrap: true, variant: 'caption'},
+            }}
           />
         </MenuItem>
       </Menu>

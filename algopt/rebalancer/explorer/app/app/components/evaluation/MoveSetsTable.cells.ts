@@ -43,6 +43,11 @@ export function formatCellValue(value: string | number): string {
     if (Number.isInteger(value)) {
       return String(value);
     }
+    // Four decimals would print a tiny nonzero change as "0.0000" or
+    // "-0.0000", which reads as no change; show its significant digits.
+    if (Math.abs(value) < 0.0001) {
+      return value.toPrecision(4);
+    }
     return value.toFixed(4);
   }
   return value;

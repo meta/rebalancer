@@ -1,9 +1,9 @@
 'use client';
 
-import {Button, IconButton, Tooltip, Typography} from '@mui/material';
+import {Box, Button, IconButton, Tooltip, Typography} from '@mui/material';
 import {
-  ChevronFirst,
-  ChevronLast,
+  ChevronLeft,
+  ChevronRight,
   LogOut,
   Navigation,
   RotateCcw,
@@ -60,53 +60,75 @@ export default function LocalSearchNavigator({
 
   if (!isNavigating) {
     return (
-      <div className="flex items-center gap-2 mb-2">
+      <Tooltip title="Step through the solver's move sets one at a time">
         <Button
           size="small"
           variant="outlined"
-          startIcon={<Navigation className="size-4" />}
+          startIcon={<Navigation size={14} />}
           onClick={startNavigation}>
-          Start Navigation
+          Start navigation
         </Button>
-      </div>
+      </Tooltip>
     );
   }
 
   return (
-    <div className="flex items-center gap-1 mb-2">
+    <Box
+      role="group"
+      aria-label="Move set navigation"
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.25,
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 1,
+        px: 0.5,
+        py: 0.25,
+      }}>
       <Tooltip title="Restart navigation">
-        <IconButton size="small" onClick={startNavigation}>
-          <RotateCcw className="size-4" />
-        </IconButton>
-      </Tooltip>
-      <Tooltip title="Exit navigation">
-        <IconButton size="small" onClick={exitNavigation}>
-          <LogOut className="size-4" />
+        <IconButton
+          size="small"
+          aria-label="Restart navigation"
+          onClick={startNavigation}>
+          <RotateCcw size={14} />
         </IconButton>
       </Tooltip>
       <Tooltip title="Previous step">
         <span>
           <IconButton
             size="small"
+            aria-label="Previous step"
             onClick={() => onStepNavigation(false)}
             disabled={assignments.src.step === 0}>
-            <ChevronFirst className="size-4" />
+            <ChevronLeft size={16} />
           </IconButton>
         </span>
       </Tooltip>
-      <Typography variant="body2" sx={{mx: 1}}>
+      <Typography
+        variant="body2"
+        sx={{mx: 0.5, fontWeight: 600, fontVariantNumeric: 'tabular-nums'}}>
         Step {assignments.src.step} vs Step {assignments.dst.step}
       </Typography>
       <Tooltip title="Next step">
         <span>
           <IconButton
             size="small"
+            aria-label="Next step"
             onClick={() => onStepNavigation(true)}
             disabled={assignments.dst.step === numSteps}>
-            <ChevronLast className="size-4" />
+            <ChevronRight size={16} />
           </IconButton>
         </span>
       </Tooltip>
-    </div>
+      <Tooltip title="Exit navigation">
+        <IconButton
+          size="small"
+          aria-label="Exit navigation"
+          onClick={exitNavigation}>
+          <LogOut size={14} />
+        </IconButton>
+      </Tooltip>
+    </Box>
   );
 }
