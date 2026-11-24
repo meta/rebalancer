@@ -1,10 +1,8 @@
 'use client';
 
 import React from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
-import {useParams, usePathname} from 'next/navigation';
-import {Tooltip} from '@mui/material';
+import {Box} from '@mui/material';
+import {useParams, usePathname, useSearchParams} from 'next/navigation';
 import {
   FileText,
   TrendingDown,
@@ -14,8 +12,6 @@ import {
   BookOpen,
   Users,
   Sparkles,
-  Copy,
-  Check,
 } from 'lucide-react';
 import {
   SidebarProvider,
@@ -25,7 +21,12 @@ import {
 import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
 import {slugifyMetricName} from '@/lib/metric-slug';
 import {decodeRunId, encodeRunId} from '@/lib/run-id';
-import {SidebarMenuItem} from './sidebar/SidebarMenuItem';
+import {pickQueryKeys} from '@/lib/url-state';
+import {NavSectionLabel, SidebarMenuItem} from './sidebar/SidebarMenuItem';
+import {
+  CollapsibleNavSection,
+  type NavLink,
+} from './sidebar/CollapsibleNavSection';
 import {EntitiesNavSection} from './sidebar/EntitiesNavSection';
 import {useAssistantContext} from './AssistantContext';
 import {ASSISTANT_ENABLED} from '@platform/assistant-ui';
@@ -34,55 +35,27 @@ import {
   rebalancerWorkplaceUrl,
   thriftExplorerUrl,
 } from '@platform/internal-links';
+import {COLOR, OVERLAY, SHELL, Z} from '@/lib/ui-tokens';
 
 export {SidebarProvider, SidebarTrigger};
-
-function RunIdCopy({runId}: {runId: string}) {
-  const [copied, setCopied] = React.useState(false);
-  const handleCopy = async () => {
-    // navigator.clipboard is undefined in non-secure contexts.
-    if (navigator.clipboard == null) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(runId);
-      setCopied(true);
-    } catch {
-      // write failed; keep the current state.
-    }
-  };
-  return (
-    <>
-      <Tooltip
-        title={copied ? 'Copied!' : 'Click to copy run ID'}
-        placement="bottom">
-        <button
-          type="button"
-          aria-label={`Copy run ID ${runId}`}
-          className="flex items-start gap-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground bg-transparent border-0 p-0 text-left"
-          onClick={handleCopy}
-          onMouseLeave={() => setCopied(false)}
-          onBlur={() => setCopied(false)}>
-          <span className="break-all">{runId}</span>
-          {copied ? (
-            <Check className="size-3 shrink-0" />
-          ) : (
-            <Copy className="size-3 shrink-0" />
-          )}
-        </button>
-      </Tooltip>
-      <span className="sr-only" role="status">
-        {copied ? 'Copied!' : ''}
-      </span>
-    </>
-  );
-}
 
 interface NavItem {
   title: string;
   segment: string;
   icon: React.ComponentType<{className?: string}>;
 }
+
+const METRICS_TOOLTIP =
+  'Evaluate metrics (e.g., container utilizations) w.r.t. different assignments';
+
+const COMPARE_KEYS = [
+  'srcBase',
+  'srcStep',
+  'srcOverrides',
+  'dstBase',
+  'dstStep',
+  'dstOverrides',
+] as const;
 
 const navigationItems: NavItem[] = [
   {title: 'Summary', segment: '', icon: FileText},
@@ -111,38 +84,38 @@ export function Sidebar() {
     return pathname.startsWith(fullPath);
   };
 
+  // C&O and Metrics read the same A/B keys; moving between them keeps the
+  // comparison. Other keys (tables, filters) stay with their page.
+  const searchParams = useSearchParams();
+  const onComparePage =
+    isItemActive('/constraints-objectives') || isItemActive('/metrics/');
+  const compareQuery = onComparePage
+    ? pickQueryKeys(searchParams, COMPARE_KEYS)
+    : '';
+  const withCompare = (href: string) =>
+    compareQuery === '' ? href : `${href}?${compareQuery}`;
+
+  const metricNames = metadata?.metricCollectionNames ?? [];
+  const metricLinks: NavLink[] = metricNames.map(name => {
+    const segment = `/metrics/${slugifyMetricName(name)}`;
+    return {
+      key: name,
+      title: name,
+      href: withCompare(basePath + segment),
+      isActive: isItemActive(segment),
+    };
+  });
+
   const sidebarContent = (
     <>
-      {/* Header */}
-      <div className="flex min-h-14 items-center gap-3 border-b border-gray-300 px-3 py-3 shrink-0">
-        <Link href="/" className="shrink-0" onClick={closeMobile}>
-          <Image
-            src="/favicon.gif"
-            alt="Rebalancer Explorer"
-            width={32}
-            height={32}
-            className="rounded-lg"
-            unoptimized
-          />
-        </Link>
-        {(!isCollapsed || isMobileOpen) && (
-          <div className="flex flex-col gap-1 min-w-0">
-            <Link
-              href="/"
-              className="text-foreground no-underline"
-              onClick={closeMobile}>
-              <span className="text-sm font-semibold leading-none whitespace-nowrap">
-                Rebalancer Explorer
-              </span>
-            </Link>
-            <RunIdCopy runId={runId} />
-          </div>
-        )}
-      </div>
-
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-2">
-        <div className="space-y-1">
+      <nav
+        aria-label="Run pages"
+        className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 py-1.5">
+        <div className="space-y-0.5">
+          {(!isCollapsed || isMobileOpen) && (
+            <NavSectionLabel>This run</NavSectionLabel>
+          )}
           {navigationItems.map(item => (
             <SidebarMenuItem
               key={item.segment}
@@ -177,40 +150,52 @@ export function Sidebar() {
         />
 
         {/* Evaluation */}
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {(!isCollapsed || isMobileOpen) && (
-            <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Evaluation
-            </div>
+            <NavSectionLabel>Evaluation</NavSectionLabel>
           )}
           <SidebarMenuItem
-            href={`${basePath}/constraints-objectives`}
+            href={withCompare(`${basePath}/constraints-objectives`)}
             icon={TrendingDown}
             title="Constraints & Objectives"
             isActive={isItemActive('/constraints-objectives')}
             isCollapsed={isCollapsed && !isMobileOpen}
             onClick={closeMobile}
-            tooltip="Evaluate constraints and objectives w.r.t. different assignments"
+            tooltip={
+              compareQuery === ''
+                ? 'Evaluate constraints and objectives w.r.t. different assignments'
+                : 'Evaluate constraints and objectives (keeps the A/B selection)'
+            }
           />
-          {(metadata?.metricCollectionNames?.length ?? 0) > 0 && (
+          {metricNames.length === 1 && (
             <SidebarMenuItem
-              href={`${basePath}/metrics/${slugifyMetricName(metadata!.metricCollectionNames[0])}`}
+              href={metricLinks[0].href}
               icon={Gauge}
               title="Metrics"
               isActive={isItemActive('/metrics/')}
               isCollapsed={isCollapsed && !isMobileOpen}
               onClick={closeMobile}
-              tooltip="Evaluate metrics (e.g., container utilizations) w.r.t. different assignments"
+              tooltip={METRICS_TOOLTIP}
+            />
+          )}
+          {metricNames.length > 1 && (
+            <CollapsibleNavSection
+              title="Metrics"
+              icon={Gauge}
+              items={metricLinks}
+              href={metricLinks[0].href}
+              isHrefActive={isItemActive('/metrics/')}
+              isCollapsed={isCollapsed && !isMobileOpen}
+              onNavigate={closeMobile}
+              tooltip={METRICS_TOOLTIP}
             />
           )}
         </div>
 
         {/* Profiling */}
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {(!isCollapsed || isMobileOpen) && (
-            <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Profiling
-            </div>
+            <NavSectionLabel>Profiling</NavSectionLabel>
           )}
           <SidebarMenuItem
             href={`${basePath}/local-search-profiling`}
@@ -224,11 +209,9 @@ export function Sidebar() {
         </div>
 
         {/* Help */}
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {(!isCollapsed || isMobileOpen) && (
-            <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Help
-            </div>
+            <NavSectionLabel>Help</NavSectionLabel>
           )}
           {ASSISTANT_ENABLED && (
             <SidebarMenuItem
@@ -236,7 +219,10 @@ export function Sidebar() {
               title="Assistant"
               isActive={isAssistantOpen}
               isCollapsed={isCollapsed && !isMobileOpen}
-              onActivate={toggleAssistant}
+              onActivate={() => {
+                toggleAssistant();
+                closeMobile();
+              }}
               tooltip="AI assistant to help you understand this rebalancer run"
             />
           )}
@@ -269,37 +255,72 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside
+      {/* Side nav: sticky under the top bar; hidden at 760px and below. */}
+      <Box
+        component="aside"
+        data-shell="side-nav"
         data-state={isOpen ? 'expanded' : 'collapsed'}
-        className="fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-gray-300 bg-white transition-[width] duration-200 ease-in-out md:flex"
-        style={{width: 'var(--sidebar-width)'}}>
+        sx={{
+          position: 'sticky',
+          top: SHELL.topBar,
+          alignSelf: 'flex-start',
+          height: `calc(100vh - ${SHELL.topBar}px)`,
+          width: 'var(--sidebar-width)',
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          borderRight: `1px solid ${COLOR.borderDefault}`,
+          bgcolor: COLOR.bgSurface,
+          transition: 'width 200ms ease',
+          '@media (max-width: 760px)': {display: 'none'},
+        }}>
         {sidebarContent}
-      </aside>
+      </Box>
 
-      {/* Mobile sidebar overlay */}
+      {/* At 760px and below the nav opens over the page. */}
       {isMobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 md:hidden"
+        <Box
           onClick={closeMobile}
           aria-hidden="true"
+          sx={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: Z.scrim,
+            bgcolor: OVERLAY.scrim,
+            '@media (min-width: 761px)': {display: 'none'},
+          }}
         />
       )}
-      <aside
-        className={[
-          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-300 bg-white transition-transform duration-200 ease-in-out md:hidden',
-          isMobileOpen ? 'translate-x-0' : '-translate-x-full',
-        ].join(' ')}>
+      <Box
+        component="aside"
+        sx={{
+          position: 'fixed',
+          top: 0,
+          bottom: 0,
+          left: 0,
+          zIndex: Z.drawer,
+          width: SHELL.nav,
+          display: 'flex',
+          flexDirection: 'column',
+          pt: 1.5,
+          borderRight: `1px solid ${COLOR.borderDefault}`,
+          bgcolor: COLOR.bgSurface,
+          transform: isMobileOpen ? 'none' : 'translateX(-100%)',
+          transition: 'transform 200ms ease',
+          '@media (min-width: 761px)': {display: 'none'},
+        }}>
         {sidebarContent}
-      </aside>
+      </Box>
     </>
   );
 }
 
 export function SidebarInset({children}: {children: React.ReactNode}) {
   return (
-    <main className="flex flex-1 flex-col min-w-0 overflow-hidden transition-[margin-left] duration-200 ease-in-out md:ml-[var(--sidebar-width)]">
+    <Box
+      component="main"
+      sx={{display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0}}>
       {children}
-    </main>
+    </Box>
   );
 }

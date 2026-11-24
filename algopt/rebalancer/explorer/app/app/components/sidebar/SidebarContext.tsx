@@ -2,17 +2,24 @@
 
 import React, {
   createContext,
-  useContext,
-  useState,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
+  useState,
 } from 'react';
-import {IconButton} from '@mui/material';
-import {Menu} from 'lucide-react';
+import {IconButton, Tooltip, useMediaQuery} from '@mui/material';
+import {PanelLeft} from 'lucide-react';
 
-const SIDEBAR_WIDTH_EXPANDED = '16rem';
-const SIDEBAR_WIDTH_COLLAPSED = '3.5rem';
+import {setPref, usePref} from '@/lib/prefs';
+import {SHELL} from '@/lib/ui-tokens';
+
+const SIDEBAR_PREF = 'rebalancer_sidebar_state';
+
+// The side nav is 232px; a 64px icon rail when the reader collapses it or at
+// 1180px and below; hidden (opened as an overlay) at 760px and below.
+export const NARROW_QUERY = '(max-width: 1180px)';
+export const MOBILE_QUERY = '(max-width: 760px)';
 
 interface SidebarContextValue {
   isOpen: boolean;
@@ -42,30 +49,15 @@ export function SidebarProvider({
   children,
   defaultOpen = true,
 }: SidebarProviderProps) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+  // The reader's choice, stored per browser; the server render (and
+  // hydration) use `defaultOpen`.
+  const stored = usePref(SIDEBAR_PREF, null);
+  const isOpen = stored == null ? defaultOpen : stored === 'true';
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
-  // Read localStorage after hydration. Lazy-initializing isOpen from
-  // localStorage would cause a hydration mismatch when the SSR'd value
-  // (defaultOpen) disagrees with the browser-stored value.
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('rebalancer_sidebar_state');
-      if (saved !== null) {
-        setIsOpen(saved === 'true');
-      }
-    }
-  }, []);
-
   const toggle = useCallback(() => {
-    setIsOpen(prev => {
-      const next = !prev;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('rebalancer_sidebar_state', String(next));
-      }
-      return next;
-    });
-  }, []);
+    setPref(SIDEBAR_PREF, String(!isOpen));
+  }, [isOpen]);
 
   const toggleMobile = useCallback(() => {
     setIsMobileOpen(prev => !prev);
@@ -86,16 +78,18 @@ export function SidebarProvider({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [toggle]);
 
+  const isNarrow = useMediaQuery(NARROW_QUERY);
+  const isCollapsed = !isOpen || isNarrow;
   const value = useMemo<SidebarContextValue>(
     () => ({
       isOpen,
-      isCollapsed: !isOpen,
+      isCollapsed,
       isMobileOpen,
       toggle,
       toggleMobile,
       closeMobile,
     }),
-    [isOpen, isMobileOpen, toggle, toggleMobile, closeMobile],
+    [isOpen, isCollapsed, isMobileOpen, toggle, toggleMobile, closeMobile],
   );
 
   return (
@@ -104,9 +98,7 @@ export function SidebarProvider({
         className="flex min-h-screen w-full"
         style={
           {
-            '--sidebar-width': isOpen
-              ? SIDEBAR_WIDTH_EXPANDED
-              : SIDEBAR_WIDTH_COLLAPSED,
+            '--sidebar-width': `${isCollapsed ? SHELL.navRail : SHELL.nav}px`,
           } as React.CSSProperties
         }>
         {children}
@@ -117,23 +109,16 @@ export function SidebarProvider({
 
 export function SidebarTrigger({className}: {className?: string}) {
   const {toggle, toggleMobile} = useSidebarContext();
+  const isMobile = useMediaQuery(MOBILE_QUERY);
 
   return (
-    <>
+    <Tooltip title={isMobile ? 'Open navigation' : 'Toggle sidebar (⌘B)'}>
       <IconButton
-        size="small"
-        onClick={toggle}
+        onClick={isMobile ? toggleMobile : toggle}
         className={className}
-        sx={{display: {xs: 'none', md: 'inline-flex'}}}>
-        <Menu className="size-4" />
+        aria-label={isMobile ? 'Open navigation' : 'Toggle sidebar'}>
+        <PanelLeft size={18} />
       </IconButton>
-      <IconButton
-        size="small"
-        onClick={toggleMobile}
-        className={className}
-        sx={{display: {xs: 'inline-flex', md: 'none'}}}>
-        <Menu className="size-4" />
-      </IconButton>
-    </>
+    </Tooltip>
   );
 }

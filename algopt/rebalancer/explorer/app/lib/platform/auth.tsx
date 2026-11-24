@@ -33,6 +33,8 @@
 
 import React, {createContext, useContext} from 'react';
 
+import {Box, Button, Paper, Typography} from '@mui/material';
+
 export interface AuthUser {
   id: string;
   name: string;
@@ -82,43 +84,60 @@ export function useAuth(): AuthState {
  * flow (middleware is pass-through and identity is static), so this just points
  * the visitor back to the app.
  */
+function AuthCard({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Box
+      sx={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        p: 2,
+      }}>
+      <Paper
+        variant="outlined"
+        sx={{width: '100%', maxWidth: 400, p: 3, textAlign: 'center'}}>
+        <Typography variant="h6" component="h1" sx={{mb: 1}}>
+          {title}
+        </Typography>
+        {children}
+      </Paper>
+    </Box>
+  );
+}
+
 export function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-8 text-center">
-      <div>
-        <h1 className="mb-2 text-lg font-semibold">Rebalancer Explorer</h1>
-        <p className="text-sm text-gray-500">
-          You are signed in.{' '}
-          <a className="underline" href="/">
-            Continue
-          </a>
-          .
-        </p>
-      </div>
-    </div>
+    <AuthCard title="Rebalancer Explorer">
+      <Typography variant="body2" color="text.secondary" sx={{mb: 2}}>
+        You are signed in.
+      </Typography>
+      <Button variant="contained" href="/">
+        Continue
+      </Button>
+    </AuthCard>
   );
 }
 
 export function LoggedOutPage({
   loginPath = '/login',
-  ButtonComponent,
+  ButtonComponent = Button,
 }: {
   loginPath?: string;
   ButtonComponent?: React.ElementType;
 }) {
   const Btn = ButtonComponent;
   return (
-    <div className="flex min-h-screen items-center justify-center p-8 text-center">
-      <div>
-        <h1 className="mb-2 text-lg font-semibold">Signed out</h1>
-        {Btn ? (
-          <Btn href={loginPath}>Sign in</Btn>
-        ) : (
-          <a className="underline" href={loginPath}>
-            Sign in
-          </a>
-        )}
-      </div>
-    </div>
+    <AuthCard title="Signed out">
+      <Btn variant="contained" href={loginPath} sx={{mt: 1}}>
+        Sign in
+      </Btn>
+    </AuthCard>
   );
 }

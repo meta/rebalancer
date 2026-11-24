@@ -3,8 +3,8 @@
 import React from 'react';
 import {Circle, Archive, Boxes, Ruler} from 'lucide-react';
 import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
-import {SidebarMenuItem} from './SidebarMenuItem';
-import {CollapsibleNavSection} from './CollapsibleNavSection';
+import {NavSectionLabel, SidebarMenuItem} from './SidebarMenuItem';
+import {CollapsibleNavSection, type NavLink} from './CollapsibleNavSection';
 
 interface EntitiesNavSectionProps {
   basePath: string;
@@ -31,37 +31,20 @@ export function EntitiesNavSection({
   const scopeNames = metadata.scopeNames ?? [];
   const dynamicDimensionNames = metadata.dynamicDimensionNames ?? [];
 
-  const scopeItems = scopeNames.map(name => (
-    <SidebarMenuItem
-      key={`scope-${name}`}
-      href={`${basePath}/entity/${encodeURIComponent(name)}`}
-      icon={Boxes}
-      title={name}
-      isActive={isItemActive(`/entity/${encodeURIComponent(name)}`)}
-      isCollapsed={collapsed}
-      onClick={closeMobile}
-    />
-  ));
-
-  const dynamicDimensionItems = dynamicDimensionNames.map(name => (
-    <SidebarMenuItem
-      key={`dd-${name}`}
-      href={`${basePath}/dynamic-dimensions/${encodeURIComponent(name)}`}
-      icon={Ruler}
-      title={name}
-      isActive={isItemActive(`/dynamic-dimensions/${encodeURIComponent(name)}`)}
-      isCollapsed={collapsed}
-      onClick={closeMobile}
-    />
-  ));
+  const toLinks = (section: string, names: string[]): NavLink[] =>
+    names.map(name => {
+      const segment = `/${section}/${encodeURIComponent(name)}`;
+      return {
+        key: name,
+        title: name,
+        href: basePath + segment,
+        isActive: isItemActive(segment),
+      };
+    });
 
   return (
-    <div className="space-y-1">
-      {!collapsed && (
-        <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Entities
-        </div>
-      )}
+    <div className="space-y-0.5">
+      {!collapsed && <NavSectionLabel>Entities</NavSectionLabel>}
 
       <SidebarMenuItem
         href={`${basePath}/entity/${encodeURIComponent(metadata.objectName)}`}
@@ -90,18 +73,20 @@ export function EntitiesNavSection({
         <CollapsibleNavSection
           title="Scopes"
           icon={Boxes}
-          isCollapsed={collapsed}>
-          {scopeItems}
-        </CollapsibleNavSection>
+          items={toLinks('entity', scopeNames)}
+          isCollapsed={collapsed}
+          onNavigate={closeMobile}
+        />
       )}
 
       {dynamicDimensionNames.length > 0 && (
         <CollapsibleNavSection
           title="Dynamic Dimensions"
           icon={Ruler}
-          isCollapsed={collapsed}>
-          {dynamicDimensionItems}
-        </CollapsibleNavSection>
+          items={toLinks('dynamic-dimensions', dynamicDimensionNames)}
+          isCollapsed={collapsed}
+          onNavigate={closeMobile}
+        />
       )}
     </div>
   );

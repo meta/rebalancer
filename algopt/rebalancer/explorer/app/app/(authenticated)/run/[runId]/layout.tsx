@@ -1,6 +1,6 @@
 'use client';
 
-import {IconButton, Tooltip} from '@mui/material';
+import {Box, Drawer, IconButton, Tooltip, useMediaQuery} from '@mui/material';
 import {ExternalLink, History, X} from 'lucide-react';
 import {use} from 'react';
 
@@ -12,27 +12,30 @@ import {
   ASSISTANT_ENABLED,
   RebalancerExplorerAssistant,
 } from '@platform/assistant-ui';
-import {
-  Sidebar,
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from '@/app/components/Sidebar';
+import {Sidebar, SidebarInset, SidebarProvider} from '@/app/components/Sidebar';
 import {
   internalExplorerUrl,
   metamateConversationUrl,
 } from '@platform/internal-links';
-import UserInfo from '@/app/components/UserInfo';
-import {ProblemMetadataProvider} from '@/lib/contexts/ProblemMetadataContext';
+import {DetailPaneProvider} from '@/app/components/detail-pane/DetailPaneContext';
+import {CompareProvider} from '@/app/components/shell/CompareContext';
+import ContextBar from '@/app/components/shell/ContextBar';
+import TopBar from '@/app/components/shell/TopBar';
+import {
+  ProblemMetadataProvider,
+  useProblemMetadata,
+} from '@/lib/contexts/ProblemMetadataContext';
 import {RebalancerHandleProvider} from '@/lib/contexts/RebalancerHandleContext';
 import {WaitForSandbox} from '@/lib/contexts/WaitForSandbox';
 import {decodeRunId} from '@/lib/run-id';
+import {COLOR, SHELL, TEXT, WEIGHT} from '@/lib/ui-tokens';
 
 const ASSISTANT_PANEL_WIDTH = 480;
 
 function AssistantPanel() {
   const {isOpen, close, view, toggleHistory, conversationId} =
     useAssistantContext();
+  const isMobile = useMediaQuery('(max-width: 760px)');
 
   if (!ASSISTANT_ENABLED || !isOpen) {
     return null;
@@ -43,15 +46,24 @@ function AssistantPanel() {
   const metamateUrl =
     conversationId != null ? metamateConversationUrl(conversationId) : null;
 
-  return (
-    <aside
-      className="sticky top-0 h-screen flex flex-col border-l border-gray-300 bg-background shrink-0 self-start"
-      style={{width: ASSISTANT_PANEL_WIDTH}}>
-      <div className="flex h-12 items-center justify-between border-b border-gray-300 px-4 shrink-0">
-        <span className="text-sm font-semibold">
+  const body = (
+    <>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          height: SHELL.topBar,
+          flexShrink: 0,
+          px: 2,
+          borderBottom: `1px solid ${COLOR.borderDefault}`,
+        }}>
+        <Box
+          component="span"
+          sx={{fontSize: TEXT.md, fontWeight: WEIGHT.semibold}}>
           {isHistoryActive ? 'Chat history' : 'Rebalancer Assistant'}
-        </span>
-        <div className="flex items-center gap-1">
+        </Box>
+        <Box sx={{display: 'flex', alignItems: 'center', gap: 0.5}}>
           {!isHistoryActive && metamateUrl != null && (
             <Tooltip title="Open in Metamate">
               <IconButton
@@ -73,7 +85,7 @@ function AssistantPanel() {
               aria-pressed={isHistoryActive}
               sx={
                 isHistoryActive
-                  ? {backgroundColor: 'rgba(37, 99, 235, 0.12)'}
+                  ? {bgcolor: COLOR.actionSubtle, color: COLOR.actionHover}
                   : undefined
               }>
               <History className="size-4" />
@@ -85,14 +97,84 @@ function AssistantPanel() {
             aria-label="Close Rebalancer Assistant">
             <X className="size-4" />
           </IconButton>
-        </div>
-      </div>
-      <div className="flex-1 min-h-0 flex flex-col">
+        </Box>
+      </Box>
+      <div className="flex min-h-0 flex-1 flex-col">
         <RebalancerExplorerAssistant />
       </div>
-    </aside>
+    </>
+  );
+
+  // Phones and tablets: a full-screen drawer instead of a 480px column that
+  // would squeeze the page.
+  if (isMobile) {
+    return (
+      <Drawer
+        anchor="right"
+        open
+        onClose={close}
+        PaperProps={{sx: {width: '100vw', display: 'flex'}}}>
+        {body}
+      </Drawer>
+    );
+  }
+
+  return (
+    <Box
+      component="aside"
+      sx={{
+        position: 'sticky',
+        top: SHELL.topBar,
+        height: `calc(100vh - ${SHELL.topBar}px)`,
+        width: ASSISTANT_PANEL_WIDTH,
+        flexShrink: 0,
+        alignSelf: 'flex-start',
+        display: 'flex',
+        flexDirection: 'column',
+        borderLeft: `1px solid ${COLOR.borderDefault}`,
+        bgcolor: COLOR.bgSurface,
+      }}>
+      {body}
+    </Box>
   );
 }
+
+/** The shell: top bar over the side navigation, the run bar and the page. */
+function RunShell({
+  runId,
+  internalUrl,
+  children,
+}: {
+  runId: string;
+  internalUrl: string | null;
+  children: React.ReactNode;
+}) {
+  const {metadata} = useProblemMetadata();
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: '100vh',
+        width: '100%',
+      }}>
+      <TopBar
+        runId={runId}
+        serviceName={metadata?.serviceName ?? ''}
+        internalUrl={internalUrl}
+      />
+      <Box sx={{display: 'flex', flex: 1, minWidth: 0}}>
+        <Sidebar />
+        <SidebarInset>
+          <ContextBar />
+          {children}
+        </SidebarInset>
+        <AssistantPanel />
+      </Box>
+    </Box>
+  );
+}
+
 export default function RunLayout({
   children,
   params,
@@ -110,31 +192,13 @@ export default function RunLayout({
         <ProblemMetadataProvider>
           <AssistantProvider>
             <SidebarProvider>
-              <Sidebar />
-              <SidebarInset>
-                <header className="flex h-14 items-center justify-between border-b border-gray-300 px-4 shrink-0">
-                  <SidebarTrigger />
-                  <div className="flex items-center gap-3">
-                    {internalUrl != null && (
-                      <Tooltip title="Switch to internal version (opens in a new tab)">
-                        <a
-                          href={internalUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-100">
-                          <ExternalLink className="h-4 w-4" />
-                          Switch to internal version
-                        </a>
-                      </Tooltip>
-                    )}
-                    <UserInfo />
-                  </div>
-                </header>
-                <div className="flex flex-1 flex-col min-w-0 overflow-y-auto">
-                  {children}
-                </div>
-              </SidebarInset>
-              <AssistantPanel />
+              <DetailPaneProvider>
+                <CompareProvider>
+                  <RunShell runId={decodedRunId} internalUrl={internalUrl}>
+                    {children}
+                  </RunShell>
+                </CompareProvider>
+              </DetailPaneProvider>
             </SidebarProvider>
           </AssistantProvider>
         </ProblemMetadataProvider>

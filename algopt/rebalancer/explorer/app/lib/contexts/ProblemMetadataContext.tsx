@@ -18,9 +18,7 @@
 
 import {createContext, useContext, useEffect, useState} from 'react';
 
-import {Alert, AlertTitle} from '@mui/material';
-import {Loader2} from 'lucide-react';
-
+import RunGateCard from '@/app/components/shell/RunGateCard';
 import type {ProblemMetadata} from '@/lib/rebalancer-explorer-types';
 import {fetchProblemMetadata} from '@/lib/rebalancer-explorer-api';
 
@@ -88,29 +86,21 @@ export function ProblemMetadataProvider({
 
   if (error != null) {
     return (
-      <Alert severity="error">
-        <AlertTitle>Error</AlertTitle>
+      <RunGateCard
+        step="metadata"
+        state="error"
+        title="Error"
+        status="ERROR"
+        statusTone="bad">
         {error}
-      </Alert>
+      </RunGateCard>
     );
   }
 
   // Spinner only while a run is actually loading; with no run (handle null)
   // there is nothing to load, so don't spin forever.
   if (handle != null && (loading || metadata == null)) {
-    return (
-      <div
-        role="status"
-        className="flex flex-col items-center justify-center gap-3 p-8">
-        <Loader2
-          aria-hidden
-          className="size-8 animate-spin text-muted-foreground"
-        />
-        <p className="text-sm text-muted-foreground">
-          Loading problem metadata...
-        </p>
-      </div>
-    );
+    return <RunGateCard step="metadata" title="Loading problem metadata..." />;
   }
 
   return (

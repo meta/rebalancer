@@ -1,8 +1,8 @@
 import type {Metadata} from 'next';
 
 export const metadata: Metadata = {
-  title: 'Login - rebalancer_explorer',
-  description: 'Sign in to rebalancer_explorer',
+  title: 'Rebalancer Explorer',
+  description: 'Inspect and analyze Rebalancer runs',
 };
 
 export default function UnauthLayout({

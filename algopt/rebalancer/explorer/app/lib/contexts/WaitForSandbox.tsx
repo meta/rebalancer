@@ -18,9 +18,7 @@
 
 import {useCallback, useEffect, useRef, useState} from 'react';
 
-import {Alert, AlertTitle} from '@mui/material';
-import {Loader2} from 'lucide-react';
-
+import RunGateCard from '@/app/components/shell/RunGateCard';
 import {fetchSandboxStatus} from '@/lib/rebalancer-explorer-api';
 import {SandboxStatus} from '@/lib/rebalancer-explorer-types';
 
@@ -95,44 +93,47 @@ export function WaitForSandbox({children}: {children: React.ReactNode}) {
     };
   }, [handle, clearPolling]);
 
-  // Handle is still loading
   if (handleLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 p-8">
-        <Loader2 className="size-8 animate-spin text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">Loading handle...</p>
-      </div>
-    );
+    return <RunGateCard step="handle" title="Loading handle..." />;
   }
 
-  // Handle failed to load
   if (handleError) {
     return (
-      <Alert severity="error">
-        <AlertTitle>Error</AlertTitle>
+      <RunGateCard
+        step="handle"
+        state="error"
+        title="Error"
+        status="ERROR"
+        statusTone="bad">
         {handleError}
-      </Alert>
+      </RunGateCard>
     );
   }
 
-  // Polling error
   if (error) {
     return (
-      <Alert severity="error">
-        <AlertTitle>Error waiting for sandbox</AlertTitle>
+      <RunGateCard
+        step="sandbox"
+        state="error"
+        title="Error waiting for sandbox"
+        status="ERROR"
+        statusTone="bad">
         {error}
-      </Alert>
+      </RunGateCard>
     );
   }
 
-  // Sandbox has not loaded
   if (status === SandboxStatus.NOT_LOADED) {
     return (
-      <Alert severity="warning">
-        <AlertTitle>The sandbox has not loaded</AlertTitle>
+      <RunGateCard
+        step="sandbox"
+        state="warning"
+        title="The sandbox has not loaded"
+        status={STATUS_LABELS[status]}
+        statusTone="warn">
         The sandbox has either expired or it failed to load. Try refreshing the
         page. Look at the server logs if the problem persists.
-      </Alert>
+      </RunGateCard>
     );
   }
 
@@ -141,18 +142,12 @@ export function WaitForSandbox({children}: {children: React.ReactNode}) {
     return <>{children}</>;
   }
 
-  // Still polling (NOT_LOADED, LOADING, or initial null state)
+  // Still polling (LOADING, or the initial null state)
   return (
-    <div className="flex flex-col items-center justify-center gap-3 p-8">
-      <Loader2 className="size-8 animate-spin text-muted-foreground" />
-      <p className="text-sm text-muted-foreground">
-        Waiting for sandbox to load on the server...
-      </p>
-      {status != null && (
-        <p className="text-xs text-muted-foreground">
-          Status: {STATUS_LABELS[status]}
-        </p>
-      )}
-    </div>
+    <RunGateCard
+      step="sandbox"
+      title="Waiting for sandbox to load on the server..."
+      status={status != null ? STATUS_LABELS[status] : undefined}
+    />
   );
 }

@@ -4,14 +4,20 @@ import {useState} from 'react';
 import {useAuth} from '@platform/auth';
 import {
   Avatar,
+  Box,
+  ButtonBase,
   Divider,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
   Skeleton,
+  Tooltip,
+  Typography,
 } from '@mui/material';
-import {LogOut, Palette} from 'lucide-react';
+import {LogOut} from 'lucide-react';
+
+import {COLOR} from '@/lib/ui-tokens';
 
 export default function UserInfo() {
   const {user, loading, logout} = useAuth();
@@ -27,12 +33,7 @@ export default function UserInfo() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center gap-3">
-        <Skeleton variant="circular" width={32} height={32} />
-        <Skeleton variant="rectangular" width={128} height={16} />
-      </div>
-    );
+    return <Skeleton variant="circular" width={28} height={28} />;
   }
 
   // Don't show anything if no user
@@ -55,44 +56,53 @@ export default function UserInfo() {
 
   return (
     <>
-      <div
-        onClick={handleMenuOpen}
-        className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity">
-        <Avatar src={avatarUrl} alt={user.name} sx={{width: 32, height: 32}}>
-          {initials}
-        </Avatar>
-        <div className="flex flex-col">
-          <span className="text-sm font-medium">{user.name}</span>
-        </div>
-      </div>
+      {/* The avatar; the name is in its tooltip and menu. */}
+      <Tooltip title={user.name}>
+        <ButtonBase
+          onClick={handleMenuOpen}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-label={`Account menu for ${user.name}`}
+          sx={{
+            borderRadius: '50%',
+            flexShrink: 0,
+            '&.Mui-focusVisible': {
+              outline: `2px solid ${COLOR.action}`,
+              outlineOffset: 2,
+            },
+          }}>
+          <Avatar src={avatarUrl} alt={user.name}>
+            {initials}
+          </Avatar>
+        </ButtonBase>
+      </Tooltip>
       <Menu
         anchorEl={anchorEl}
         open={menuOpen}
         onClose={handleMenuClose}
         anchorOrigin={{vertical: 'bottom', horizontal: 'right'}}
         transformOrigin={{vertical: 'top', horizontal: 'right'}}
-        slotProps={{paper: {sx: {width: 224}}}}>
-        <div className="px-2 py-3">
-          <div className="flex items-center gap-3">
-            <Avatar
-              src={avatarUrl}
-              alt={user.name}
-              sx={{width: 40, height: 40}}>
-              {initials}
-            </Avatar>
-            <div className="flex-1">
-              <div className="font-semibold text-sm">{user.name}</div>
-              <div className="text-xs text-gray-500">@{user.username}</div>
-            </div>
-          </div>
-        </div>
-        <Divider />
-        <MenuItem>
-          <ListItemIcon>
-            <Palette className="size-4" />
-          </ListItemIcon>
-          <ListItemText>Appearance</ListItemText>
-        </MenuItem>
+        slotProps={{paper: {sx: {width: 264}}}}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            px: 2,
+            py: 1.5,
+          }}>
+          <Avatar src={avatarUrl} alt={user.name} sx={{width: 40, height: 40}}>
+            {initials}
+          </Avatar>
+          <Box sx={{minWidth: 0}}>
+            <Typography variant="subtitle2" noWrap>
+              {user.name}
+            </Typography>
+            <Typography variant="caption" component="div" noWrap>
+              @{user.username}
+            </Typography>
+          </Box>
+        </Box>
         <Divider />
         <MenuItem
           onClick={() => {
@@ -100,7 +110,7 @@ export default function UserInfo() {
             logout();
           }}>
           <ListItemIcon>
-            <LogOut className="size-4" />
+            <LogOut size={16} />
           </ListItemIcon>
           <ListItemText>Log out</ListItemText>
         </MenuItem>
