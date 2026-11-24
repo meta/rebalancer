@@ -130,13 +130,18 @@ export function parseQs(searchParams: URLSearchParams): qs.ParsedQs {
     ignoreQueryPrefix: true,
     allowDots: true,
     depth: 20,
+    // qs turns arrays longer than 20 into objects by default, which drops
+    // overrides, shown columns and objectives on reload.
+    arrayLimit: 1000,
+    parameterLimit: 10000,
   });
 }
 
 export function stringifyQs(obj: Record<string, unknown>): string {
   // Use bracket notation (not allowDots) so URLs survive URL shorteners
-  // that re-encode brackets and mangle dot-separated paths.
-  return qs.stringify(obj, {encode: false});
+  // that re-encode brackets and mangle dot-separated paths. Keys stay
+  // readable; values are encoded so `+`, `&`, `#` and `%` survive.
+  return qs.stringify(obj, {encodeValuesOnly: true});
 }
 
 // ---------------------------------------------------------------------------
