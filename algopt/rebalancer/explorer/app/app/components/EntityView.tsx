@@ -2,202 +2,235 @@
 
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 
-import {Box, Paper, Skeleton} from '@mui/material';
+import {Box, Skeleton} from '@mui/material';
 import {useSearchParams} from 'next/navigation';
 
-import PageHead, {PageContainer} from '@/app/components/shell/PageHead';
-import FilterChips from '@/app/components/ui/FilterChips';
-import Tag from '@/app/components/ui/Tag';
-import {EmptyState, ErrorState} from '@/app/components/ui/StateViews';
+import EntityFacets from '@/app/components/entity/EntityFacets';
+import EntityList from '@/app/components/entity/EntityList';
 import {
-  asArray,
-  normalizeFilters,
-  parseQs,
-  safeInt,
-  stringifyQs,
-  useUrlStateSync,
-} from '@/lib/url-state';
-
+  searchParamsFromViewState,
+  viewStateFromSearchParams,
+  type ViewState,
+} from '@/app/components/entity/entity-view-state';
+import useRunMoves from '@/app/components/entity/useRunMoves';
+import PageHead, {PageContainer} from '@/app/components/shell/PageHead';
+import type {ExtraChip} from '@/app/components/ui/FilterChips';
+import {EmptyState, ErrorState} from '@/app/components/ui/StateViews';
+import Tag from '@/app/components/ui/Tag';
+import UpdatingOverlay from '@/app/components/UpdatingOverlay';
 import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
 import {useRebalancerHandle} from '@/lib/contexts/RebalancerHandleContext';
-import {formatCount, isTypeaheadColumn} from '@/lib/format';
+import {
+  buildFields,
+  containerMoves,
+  fieldWidth,
+  fitToWidth,
+  inDisplayOrder,
+  isPickable,
+  normalizeShown,
+  profileFields,
+  rankFields,
+  searchRule,
+  type EntityField,
+} from '@/lib/entity-fields';
+import {isTypeaheadColumn} from '@/lib/format';
 import {fetchEntityData} from '@/lib/rebalancer-explorer-api';
 import type {
   ColumnDescription,
-  Filter,
+  FilterRule,
+  ProblemMetadata,
   Result,
+  RowData,
 } from '@/lib/rebalancer-explorer-types';
-import {OrderDirection} from '@/lib/rebalancer-explorer-types';
+import {useUrlStateSync} from '@/lib/url-state';
 
-import EntityFilter from './EntityFilter';
-import GroupBySelector from './GroupBySelector';
-import EntityTable from './EntityTable';
 import MetricDistributionSection from './MetricDistributionSection';
-import ShowColumnsSelector from './ShowColumnsSelector';
+
+type EntityKind = 'object' | 'container' | 'scope' | 'dynamic dimension';
+
+// An object's 0/1 column that marks it fixed in place.
+const MOVABLE_COLUMN = 'is_movable';
+
+function kindOf(
+  metadata: ProblemMetadata | null,
+  entityName: string,
+): EntityKind | null {
+  if (metadata == null) {
+    return null;
+  }
+  if (entityName === metadata.objectName) {
+    return 'object';
+  }
+  if (entityName === metadata.containerName) {
+    return 'container';
+  }
+  if (metadata.scopeNames.includes(entityName)) {
+    return 'scope';
+  }
+  if (metadata.dynamicDimensionNames.includes(entityName)) {
+    return 'dynamic dimension';
+  }
+  return null;
+}
+
+function kindHelp(kind: EntityKind, m: ProblemMetadata): string {
+  switch (kind) {
+    case 'object':
+      return `What the solver places. Each sits in one ${m.containerName}; a move changes which.`;
+    case 'container':
+      return `Where ${m.objectName} rows go. Its utilization is the sum of its ${m.objectName} dimensions.`;
+    case 'scope':
+      return `A grouping of ${m.containerName} rows. Each item's utilization sums its ${m.containerName} rows.`;
+    case 'dynamic dimension':
+      return `A value looked up per ${m.objectName} and scope item, so it changes when the ${m.objectName} moves.`;
+  }
+}
 
 /**
- * ViewState represents the complete state of the entity view,
- * mirroring the www RebalancerExplorerTable ViewState.
+ * The automatic columns, best first. An object's movable flag shows as a
+ * pill, and its scope assignments follow from its container, so they come
+ * last.
  */
-export interface ViewState {
-  offset: number;
-  limit: number;
-  orderColumn: string | null;
-  orderDirection: OrderDirection;
-  filters: Filter[];
-  groupByColumns: string[];
-  showColumns: string[];
+function autoOrder(
+  kind: EntityKind | null,
+  metadata: ProblemMetadata | null,
+  fields: readonly EntityField[],
+  rows: readonly RowData[],
+): string[] {
+  const object = kind === 'object';
+  return rankFields(
+    fields,
+    profileFields(fields, rows),
+    rows.length,
+    new Set(object ? [MOVABLE_COLUMN] : []),
+    new Set(
+      object
+        ? fields
+            .filter(
+              f => f.kind === 'assignment' && f.key !== metadata?.containerName,
+            )
+            .map(f => f.key)
+        : [],
+    ),
+  );
 }
 
-const DEFAULT_PAGE_SIZE = 25;
+// Width of the list card before it is measured.
+const DEFAULT_LIST_WIDTH = 1100;
+// The card's horizontal padding and borders.
+const LIST_CHROME = 4;
+const MOVES_WIDTH = 116;
+const CHANGE_WIDTH = 232;
 
-// --- URL <-> ViewState helpers ---
-
-function viewStateFromSearchParams(searchParams: URLSearchParams): ViewState {
-  const parsed = parseQs(searchParams);
-
-  return {
-    offset: safeInt(parsed.offset, 0),
-    limit: safeInt(parsed.limit, DEFAULT_PAGE_SIZE),
-    orderColumn:
-      typeof parsed.orderColumn === 'string' ? parsed.orderColumn : null,
-    orderDirection: safeInt(parsed.orderDirection, 0) as OrderDirection,
-    filters: normalizeFilters(parsed.filters),
-    groupByColumns: asArray<string>(parsed.groupBy, []),
-    showColumns: asArray<string>(parsed.showColumns, []),
-  };
+function useElementWidth() {
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  const [width, setWidth] = useState<number | null>(null);
+  useEffect(() => {
+    if (el == null) {
+      return;
+    }
+    const observer = new ResizeObserver(entries => {
+      const w = Math.round(entries[0]?.contentRect.width ?? 0);
+      setWidth(prev => (prev === w ? prev : w));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el]);
+  return {ref: setEl, width};
 }
 
-function searchParamsFromViewState(viewState: ViewState): string {
-  const obj: Record<string, unknown> = {};
-
-  if (viewState.offset !== 0) {
-    obj.offset = viewState.offset;
-  }
-  if (viewState.limit !== DEFAULT_PAGE_SIZE) {
-    obj.limit = viewState.limit;
-  }
-  if (viewState.orderColumn != null) {
-    obj.orderColumn = viewState.orderColumn;
-  }
-  if (viewState.orderDirection !== 0) {
-    obj.orderDirection = viewState.orderDirection;
-  }
-  if (viewState.filters.length > 0) {
-    obj.filters = viewState.filters;
-  }
-  if (viewState.groupByColumns.length > 0) {
-    obj.groupBy = viewState.groupByColumns;
-  }
-  if (viewState.showColumns.length > 0) {
-    obj.showColumns = viewState.showColumns;
-  }
-
-  return stringifyQs(obj);
-}
-
-// --- Component ---
-
-interface EntityViewProps {
-  entityName: string;
-}
-
-export default function EntityView({entityName}: EntityViewProps) {
+export default function EntityView({entityName}: {entityName: string}) {
   const {
     handle,
+    runId,
     loading: handleLoading,
     error: handleError,
   } = useRebalancerHandle();
   const {metadata} = useProblemMetadata();
   const searchParams = useSearchParams();
 
-  // Initialize ViewState from URL search params
-  const initialViewState = useMemo(
-    () => viewStateFromSearchParams(searchParams),
-    // Only compute initial state once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+  const [viewState, setViewState] = useState<ViewState>(() =>
+    viewStateFromSearchParams(searchParams),
   );
-  const [viewState, setViewState] = useState<ViewState>(initialViewState);
-
-  // Data state
+  // The entity's own columns, from the first result: the filter editor's
+  // fields and the typeahead lookups.
   const [columnDescriptions, setColumnDescriptions] = useState<
     ColumnDescription[] | null
   >(null);
-  const [result, setResult] = useState<Result | null>(null);
+  const [data, setData] = useState<{result: Result; key: string} | null>(null);
+  // The automatic columns' order, fixed per query so that paging and
+  // sorting do not move columns around.
+  const [ranked, setRanked] = useState<{key: string; keys: string[]} | null>(
+    null,
+  );
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
+  const {ref: listRef, width: listWidth} = useElementWidth();
 
-  // Sync ViewState to URL search params
   useUrlStateSync(() => searchParamsFromViewState(viewState), [viewState]);
 
-  // Map column names to known backend entity names for typeahead lookups.
-  // Column names like "src.region_lsst_pool_scope" must be mapped to the actual
-  // entity name "region_lsst_pool_scope" that the backend's getTypeahead recognizes.
-  const columnTypeaheadEntities = useMemo(() => {
-    if (metadata == null || columnDescriptions == null) return undefined;
+  const kind = kindOf(metadata, entityName);
+  const {moves, loading: movesLoading} = useRunMoves(
+    handle,
+    metadata,
+    kind === 'object' || kind === 'container',
+  );
 
-    const knownEntities = new Set<string>();
-    knownEntities.add(metadata.objectName);
-    knownEntities.add(metadata.containerName);
-    for (const scope of metadata.scopeNames) {
-      knownEntities.add(scope);
+  // The rows "Moved" keeps: moved objects, or the containers they leave or
+  // enter.
+  const movedNames = useMemo(() => {
+    if (moves?.moved == null || moves.count === 0) {
+      return null;
     }
-    for (const partition of metadata.partitionNames) {
-      knownEntities.add(partition);
+    if (kind === 'object') {
+      return Array.from(moves.moved.keys());
     }
-
-    const entities: Record<string, string> = {};
-    for (const col of columnDescriptions) {
-      if (!isTypeaheadColumn(col.type)) continue;
-
-      if (knownEntities.has(col.name)) {
-        entities[col.name] = col.name;
-        continue;
+    const touched = new Set<string>();
+    for (const {src, dst} of moves.moved.values()) {
+      if (src !== '') {
+        touched.add(src);
       }
-
-      // Strip prefix (e.g. "src.region_lsst_pool_scope" -> "region_lsst_pool_scope")
-      const dotIndex = col.name.indexOf('.');
-      if (dotIndex >= 0) {
-        const suffix = col.name.substring(dotIndex + 1);
-        if (knownEntities.has(suffix)) {
-          entities[col.name] = suffix;
-        }
-      }
+      touched.add(dst);
     }
+    return Array.from(touched);
+  }, [moves, kind]);
+  const movedOnly = viewState.movedOnly && movedNames != null;
+  const waitingForMoves = viewState.movedOnly && movesLoading;
 
-    return entities;
-  }, [metadata, columnDescriptions]);
+  const pkColumn =
+    columnDescriptions?.find(c => c.primaryKey)?.name ??
+    (kind === 'dynamic dimension' && metadata != null
+      ? metadata.objectName
+      : entityName);
+  const search = viewState.search.trim();
 
-  // Partitions have no entity page, so their values are not linked.
-  const linkEntities = useMemo(() => {
-    if (columnTypeaheadEntities == null || metadata == null) {
-      return undefined;
-    }
-    return Object.fromEntries(
-      Object.entries(columnTypeaheadEntities).filter(
-        ([, entity]) => !metadata.partitionNames.includes(entity),
-      ),
-    );
-  }, [columnTypeaheadEntities, metadata]);
+  // A new query (not a new page or order) picks the automatic columns again.
+  const queryKey = JSON.stringify([
+    viewState.filters,
+    viewState.groupByColumns,
+    search,
+    movedOnly,
+  ]);
 
-  // Debounced fetch: fetch entity data on mount, entity change, or viewState change
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seqRef = useRef(0);
   const fetchData = useCallback(async () => {
-    if (handle == null) {
+    if (handle == null || waitingForMoves) {
       return;
     }
-
+    const seq = ++seqRef.current;
     setDataLoading(true);
     setDataError(null);
-
+    const rules: FilterRule[] = viewState.filters.flatMap(f => f.rules);
+    if (search !== '') {
+      rules.push(searchRule(pkColumn, search));
+    }
+    if (movedOnly && movedNames != null) {
+      rules.push({stringAny: {column: pkColumn, values: movedNames}});
+    }
     try {
       const response = await fetchEntityData(handle, {
         entity: entityName,
-        filter:
-          viewState.filters.length > 0
-            ? {rules: viewState.filters.flatMap(f => f.rules)}
-            : undefined,
+        filter: rules.length > 0 ? {rules} : undefined,
         order:
           viewState.orderColumn != null
             ? {
@@ -209,182 +242,426 @@ export default function EntityView({entityName}: EntityViewProps) {
                 ],
               }
             : undefined,
-        page: {
-          offset: viewState.offset,
-          limit: viewState.limit,
-        },
+        page: {offset: viewState.offset, limit: viewState.limit},
         group:
           viewState.groupByColumns.length > 0
             ? {columns: viewState.groupByColumns}
             : undefined,
       });
-
-      setResult(response.result);
-
-      // Capture column descriptions from the first successful response
-      if (columnDescriptions == null && response.result.columns.length > 0) {
-        setColumnDescriptions(response.result.columns);
+      if (seq !== seqRef.current) {
+        return;
       }
+      const result = response.result;
+      setData({result, key: queryKey});
+      if (viewState.groupByColumns.length === 0) {
+        setColumnDescriptions(prev =>
+          prev == null && result.columns.length > 0 ? result.columns : prev,
+        );
+      }
+      setRanked(prev => {
+        if (prev?.key === queryKey) {
+          return prev;
+        }
+        return {
+          key: queryKey,
+          keys: autoOrder(
+            kind,
+            metadata,
+            buildFields(result.columns),
+            result.rows,
+          ),
+        };
+      });
     } catch (err: unknown) {
-      setDataError(
-        err instanceof Error ? err.message : 'Failed to fetch entity data',
-      );
+      if (seq === seqRef.current) {
+        setDataError(
+          err instanceof Error ? err.message : 'Failed to fetch entity data',
+        );
+      }
     } finally {
-      setDataLoading(false);
+      if (seq === seqRef.current) {
+        setDataLoading(false);
+      }
     }
-  }, [handle, entityName, viewState, columnDescriptions]);
+  }, [
+    handle,
+    waitingForMoves,
+    viewState,
+    search,
+    pkColumn,
+    movedOnly,
+    movedNames,
+    entityName,
+    queryKey,
+    kind,
+    metadata,
+  ]);
 
+  // A page opened grouped still needs the entity's own columns.
+  const needsSchema =
+    columnDescriptions == null && viewState.groupByColumns.length > 0;
+  useEffect(() => {
+    if (handle == null || !needsSchema) {
+      return;
+    }
+    let cancelled = false;
+    fetchEntityData(handle, {entity: entityName, page: {offset: 0, limit: 1}})
+      .then(({result}) => {
+        if (!cancelled && result.columns.length > 0) {
+          setColumnDescriptions(prev => prev ?? result.columns);
+        }
+      })
+      .catch(() => {
+        // The filter editor stays hidden; the list still works.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [handle, needsSchema, entityName]);
+
+  // Typing and clicking settle for 300 ms before a fetch.
   useEffect(() => {
     if (handle == null) {
       return;
     }
-
-    // Debounce rapid ViewState changes (300ms)
-    if (debounceTimerRef.current != null) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    debounceTimerRef.current = setTimeout(() => {
-      void fetchData();
-    }, 300);
-
-    return () => {
-      if (debounceTimerRef.current != null) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
+    const timer = setTimeout(() => void fetchData(), 300);
+    return () => clearTimeout(timer);
   }, [handle, fetchData]);
 
-  // --- Loading / error states ---
+  // Column → the entity its values name, for typeahead lookups: "src.region"
+  // looks up "region".
+  const columnTypeaheadEntities = useMemo(() => {
+    if (metadata == null || columnDescriptions == null) {
+      return undefined;
+    }
+    const known = new Set([
+      metadata.objectName,
+      metadata.containerName,
+      ...metadata.scopeNames,
+      ...metadata.partitionNames,
+    ]);
+    const entities: Record<string, string> = {};
+    for (const col of columnDescriptions) {
+      if (!isTypeaheadColumn(col.type)) {
+        continue;
+      }
+      const dot = col.name.indexOf('.');
+      const name = known.has(col.name)
+        ? col.name
+        : dot >= 0
+          ? col.name.substring(dot + 1)
+          : null;
+      if (name != null && known.has(name)) {
+        entities[col.name] = name;
+      }
+    }
+    return entities;
+  }, [metadata, columnDescriptions]);
+
+  // Partitions have no entity page, so their values are not linked.
+  const linkEntities = useMemo(
+    () =>
+      columnTypeaheadEntities == null || metadata == null
+        ? {}
+        : Object.fromEntries(
+            Object.entries(columnTypeaheadEntities).filter(
+              ([, entity]) => !metadata.partitionNames.includes(entity),
+            ),
+          ),
+    [columnTypeaheadEntities, metadata],
+  );
+
+  const result = data?.result ?? null;
+  const rowCount = result?.rows.length ?? 0;
+  const fields = useMemo(
+    () => (result != null ? buildFields(result.columns) : []),
+    [result],
+  );
+  const profiles = useMemo(
+    () => profileFields(fields, result?.rows ?? []),
+    [fields, result],
+  );
+  const grouped = viewState.groupByColumns.length > 0;
+  const byKey = useMemo(() => new Map(fields.map(f => [f.key, f])), [fields]);
+
+  // The row's label: its name, or the grouped-by columns and their count.
+  const labels = useMemo((): EntityField[] => {
+    if (grouped) {
+      const keys = new Set(normalizeShown(viewState.groupByColumns, fields));
+      return fields.filter(f => keys.has(f.key) || f.kind === 'count');
+    }
+    const name =
+      fields.find(f => f.primaryKey) ?? fields.find(f => f.kind === 'name');
+    return name != null ? [name] : [];
+  }, [grouped, viewState.groupByColumns, fields]);
+  const labelKeys = new Set(labels.map(f => f.key));
+  const pickable = fields.filter(f => isPickable(f) && !labelKeys.has(f.key));
+
+  const containerField =
+    kind === 'object' && !grouped && metadata != null
+      ? (fields.find(f => f.key === metadata.containerName && f.a != null) ??
+        null)
+      : null;
+  const movableField =
+    kind === 'object' && !grouped
+      ? (fields.find(f => f.key === MOVABLE_COLUMN && f.numeric) ?? null)
+      : null;
+  const locked = new Set(containerField != null ? [containerField.key] : []);
+
+  const pickableKeys = new Set(pickable.map(f => f.key));
+  const explicit = normalizeShown(viewState.showColumns, fields).filter(k =>
+    pickableKeys.has(k),
+  );
+  const auto = explicit.length === 0;
+
+  const moveCounts = useMemo(
+    () =>
+      kind === 'container' && !grouped && moves?.moved != null
+        ? containerMoves(moves.moved)
+        : null,
+    [kind, grouped, moves],
+  );
+  const showChange =
+    (kind === 'container' || kind === 'scope') &&
+    fields.some(f => f.kind === 'utilization' && f.a != null);
+
+  let shownKeys: Set<string>;
+  if (auto) {
+    const order =
+      ranked?.key === queryKey
+        ? ranked.keys
+        : autoOrder(kind, metadata, fields, result?.rows ?? []);
+    const widthOf = (k: string) => {
+      const f = byKey.get(k);
+      return f != null ? fieldWidth(f) : 0;
+    };
+    const fixed =
+      labels.reduce(
+        (s, f) => s + (f.kind === 'count' ? 96 : grouped ? 200 : 240),
+        0,
+      ) +
+      (moveCounts != null ? MOVES_WIDTH : 0) +
+      (showChange ? CHANGE_WIDTH : 0) +
+      Array.from(locked).reduce((s, k) => s + widthOf(k), 0);
+    const budget = (listWidth ?? DEFAULT_LIST_WIDTH) - LIST_CHROME - fixed;
+    shownKeys = new Set([
+      ...locked,
+      ...fitToWidth(
+        order.filter(k => pickableKeys.has(k) && !locked.has(k)),
+        widthOf,
+        budget,
+      ),
+    ]);
+  } else {
+    shownKeys = new Set([...locked, ...explicit]);
+  }
+  // An object's own container leads; then the rest by kind.
+  const columns = [
+    ...(containerField != null ? [containerField] : []),
+    ...inDisplayOrder(
+      pickable.filter(f => f !== containerField),
+      shownKeys,
+    ),
+  ];
+
+  const setShown = (keys: string[]) =>
+    setViewState(prev => ({...prev, showColumns: keys}));
+  const toggleField = (key: string) => {
+    const current = columns.map(f => f.key).filter(k => !locked.has(k));
+    setShown(
+      current.includes(key)
+        ? current.filter(k => k !== key)
+        : [...current, key],
+    );
+  };
+  const showField = (key: string) => {
+    const current = columns.map(f => f.key).filter(k => !locked.has(k));
+    if (!current.includes(key)) {
+      setShown([...current, key]);
+    }
+  };
+
+  const clearAll = () =>
+    setViewState(prev => ({
+      ...prev,
+      filters: [],
+      search: '',
+      movedOnly: false,
+      offset: 0,
+    }));
+  const extraChips: ExtraChip[] = [
+    ...(search !== ''
+      ? [
+          {
+            key: 'search',
+            label: `${pkColumn} contains “${search}”`,
+            onRemove: () =>
+              setViewState(prev => ({...prev, search: '', offset: 0})),
+          },
+        ]
+      : []),
+    ...(movedOnly
+      ? [
+          {
+            key: 'moved',
+            label: kind === 'container' ? 'Touched by moves' : 'Moved',
+            onRemove: () =>
+              setViewState(prev => ({...prev, movedOnly: false, offset: 0})),
+          },
+        ]
+      : []),
+  ];
 
   if (handleLoading) {
     return (
-      <div className="p-4 space-y-4">
+      <PageContainer>
         <Skeleton variant="rectangular" height={48} />
         <Skeleton variant="rectangular" height={400} />
-      </div>
+      </PageContainer>
     );
   }
-
   if (handleError != null) {
     return (
-      <div className="p-4">
+      <PageContainer>
         <ErrorState>{handleError}</ErrorState>
-      </div>
+      </PageContainer>
     );
   }
-
-  if (handle == null) {
+  if (handle == null || runId == null) {
     return (
-      <div className="p-4">
+      <PageContainer>
         <EmptyState title="No handle available" />
-      </div>
+      </PageContainer>
     );
   }
 
-  // Which kind of entity this page lists, from metadata names only.
-  const kind =
-    metadata == null
-      ? null
-      : entityName === metadata.objectName
-        ? 'object'
-        : entityName === metadata.containerName
-          ? 'container'
-          : metadata.scopeNames.includes(entityName)
-            ? 'scope'
-            : metadata.dynamicDimensionNames.includes(entityName)
-              ? 'dynamic dimension'
-              : null;
-  const isGrouped = viewState.groupByColumns.length > 0;
+  const rowNoun = kind === 'dynamic dimension' ? 'values' : entityName;
+  const show =
+    movedNames != null && moves != null && metadata != null
+      ? kind === 'object'
+        ? {
+            label: 'Moved',
+            help: `${metadata.objectName} rows whose ${metadata.containerName} differs between the Initial and the Final assignment.`,
+            movedCount: moves.count,
+            total: metadata.numObjects,
+          }
+        : {
+            label: 'Touched',
+            help: `${metadata.containerName} rows that a move leaves or enters, Initial → Final.`,
+            movedCount: movedNames.length,
+            total: metadata.numContainers,
+          }
+      : null;
 
   return (
     <PageContainer>
       <PageHead
         title={entityName}
         sub={
-          <Box
-            component="span"
-            sx={{display: 'inline-flex', alignItems: 'center', gap: 1}}>
-            {kind != null && <Tag>{kind}</Tag>}
-            {result != null &&
-              `${formatCount(result.totalCount)} ${isGrouped ? 'group' : 'row'}${result.totalCount === 1 ? '' : 's'}`}
-          </Box>
+          kind != null && metadata != null ? (
+            <Box
+              component="span"
+              sx={{display: 'inline-flex', alignItems: 'center', gap: 1}}>
+              <Tag>{kind}</Tag>
+              {kindHelp(kind, metadata)}
+            </Box>
+          ) : undefined
         }
       />
       {dataError != null && (
         <ErrorState onClose={() => setDataError(null)}>{dataError}</ErrorState>
       )}
-
-      {/* Filter, group and columns: the page's toolbar. */}
-      <Paper variant="outlined">
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: '250px minmax(0, 1fr)',
+          gap: 2,
+          alignItems: 'start',
+          '@media (max-width: 1180px)': {gridTemplateColumns: '1fr'},
+        }}>
         <Box
           sx={{
-            px: 2,
-            py: 1.5,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 1.5,
+            position: 'sticky',
+            top: 120,
+            maxHeight: 'calc(100vh - 136px)',
+            overflowY: 'auto',
+            '@media (max-width: 1180px)': {
+              position: 'static',
+              maxHeight: 'none',
+            },
           }}>
-          {columnDescriptions != null && columnDescriptions.length > 0 && (
-            <EntityFilter
-              columnDescriptions={columnDescriptions}
-              filters={viewState.filters}
-              onFiltersChange={filters =>
-                setViewState(prev => ({...prev, filters, offset: 0}))
-              }
-              entityName={entityName}
-              columnTypeaheadEntities={columnTypeaheadEntities}
-            />
-          )}
-          <FilterChips
-            filters={viewState.filters}
-            onChange={filters =>
-              setViewState(prev => ({...prev, filters, offset: 0}))
+          <EntityFacets
+            nameLabel={pkColumn}
+            search={viewState.search}
+            onSearchChange={value =>
+              setViewState(prev => ({...prev, search: value, offset: 0}))
             }
+            show={
+              show != null
+                ? {
+                    ...show,
+                    moved: movedOnly,
+                    onChange: moved =>
+                      setViewState(prev => ({
+                        ...prev,
+                        movedOnly: moved,
+                        offset: 0,
+                      })),
+                  }
+                : null
+            }
+            fields={pickable}
+            shown={shownKeys}
+            locked={locked}
+            auto={auto}
+            onToggle={toggleField}
+            onReset={() => setShown([])}
+            profiles={profiles}
+            rowCount={rowCount}
           />
-          <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 1.5}}>
-            <GroupBySelector
-              columnDescriptions={columnDescriptions ?? []}
-              groupByColumns={viewState.groupByColumns}
-              onGroupByChange={groupByColumns =>
-                setViewState(prev => ({
-                  ...prev,
-                  groupByColumns,
-                  offset: 0,
-                  orderColumn:
-                    groupByColumns.length > 0 ? groupByColumns[0] : null,
-                  orderDirection: OrderDirection.ASCENDING,
-                }))
-              }
-            />
-            <ShowColumnsSelector
-              columnDescriptions={columnDescriptions ?? []}
-              groupByColumns={viewState.groupByColumns}
-              showColumns={viewState.showColumns}
-              onShowColumnsChange={showColumns =>
-                setViewState(prev => ({...prev, showColumns}))
-              }
-            />
-          </Box>
         </Box>
-      </Paper>
-
-      {dataLoading && result == null ? (
-        <div className="space-y-2">
-          <Skeleton variant="rectangular" height={48} />
-          <Skeleton variant="rectangular" height={400} />
-        </div>
-      ) : (
-        <EntityTable
-          result={result}
-          viewState={viewState}
-          onViewStateChange={setViewState}
-          loading={dataLoading}
-          entityName={entityName}
-          linkEntities={linkEntities}
-        />
-      )}
-
+        <Box
+          ref={listRef}
+          sx={{position: 'relative', minWidth: 0}}
+          aria-busy={dataLoading}>
+          {result == null ? (
+            <Skeleton variant="rounded" height={480} />
+          ) : (
+            <>
+              {dataLoading && <UpdatingOverlay />}
+              <EntityList
+                entityName={entityName}
+                nameLabel={rowNoun}
+                result={result}
+                fields={fields}
+                columns={columns}
+                labels={labels}
+                profiles={profiles}
+                viewState={viewState}
+                onViewStateChange={setViewState}
+                rowEntity={
+                  !grouped && kind !== 'dynamic dimension' ? entityName : null
+                }
+                handle={handle}
+                runId={runId}
+                linkEntities={linkEntities}
+                objectStatus={
+                  kind === 'object' && !grouped
+                    ? {container: containerField, movable: movableField}
+                    : null
+                }
+                moves={moveCounts}
+                showChange={showChange}
+                columnDescriptions={columnDescriptions ?? []}
+                columnTypeaheadEntities={columnTypeaheadEntities}
+                extraChips={extraChips}
+                onClearAll={clearAll}
+                onShowField={showField}
+              />
+            </>
+          )}
+        </Box>
+      </Box>
       <MetricDistributionSection
         entityName={entityName}
         columnDescriptions={columnDescriptions ?? []}

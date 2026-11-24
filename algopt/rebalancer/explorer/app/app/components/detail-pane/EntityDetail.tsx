@@ -2,7 +2,7 @@
 
 import {useEffect, useMemo, useState} from 'react';
 
-import {Box, Link, TextField, Typography} from '@mui/material';
+import {Box, Button, Link, TextField, Typography} from '@mui/material';
 import {ArrowUpRight} from 'lucide-react';
 
 import CopyButton from '@/app/components/ui/CopyButton';
@@ -11,14 +11,19 @@ import {
   ErrorState,
   LoadingState,
 } from '@/app/components/ui/StateViews';
-import Tag from '@/app/components/ui/Tag';
-import {columnTypeInfo} from '@/lib/column-types';
-import {isTypeaheadColumn} from '@/lib/format';
-import {COLOR} from '@/lib/ui-tokens';
+import {
+  buildFields,
+  fieldValues,
+  isBlank,
+  type CellValue,
+  type EntityField,
+  type FieldKind,
+} from '@/lib/entity-fields';
+import {formatCount, formatSignedCompact} from '@/lib/format';
+import {COLOR, EYEBROW_TEXT, TEXT} from '@/lib/ui-tokens';
 import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
 import {fetchEntityData} from '@/lib/rebalancer-explorer-api';
 import type {
-  CellData,
   ColumnDescription,
   Handle,
   Result,
@@ -31,16 +36,31 @@ import {stringifyQs} from '@/lib/url-state';
 // Primary-key column per (sandbox, entity), so a second open needs one RPC.
 const primaryKeyCache = new Map<string, string>();
 
-function formatValue(cell: CellData | undefined): string {
-  if (cell == null) {
-    return '-';
+const DETAIL_SECTIONS: ReadonlyArray<{
+  kind: FieldKind;
+  title: string;
+  sub?: string;
+}> = [
+  {kind: 'assignment', title: 'Assignment', sub: 'initial → final'},
+  {kind: 'scope', title: 'Scopes'},
+  {kind: 'partition', title: 'Partitions'},
+  {kind: 'utilization', title: 'Utilization', sub: 'initial → final'},
+  {kind: 'dimension', title: 'Dimensions'},
+  {kind: 'name', title: 'Names'},
+  {kind: 'count', title: 'Counts'},
+  {kind: 'other', title: 'Other'},
+];
+
+/** Up to 6 significant digits; the exact value is in the title and copy. */
+function formatDetail(v: number): string {
+  if (Number.isInteger(v)) {
+    return formatCount(v);
   }
-  if (cell.doubleValue != null) {
-    const num = Number(cell.doubleValue);
-    return Number.isInteger(num) ? String(num) : String(num);
-  }
-  return cell.stringValue ?? '-';
+  return String(Number(v.toPrecision(6))).replace('-', '\u2212');
 }
+
+// Kinds whose values name an entity.
+const NAMING_KINDS = new Set<FieldKind>(['name', 'assignment', 'scope']);
 
 async function loadRow(
   handle: Handle,
@@ -99,18 +119,16 @@ export default function EntityDetail({
         ? []
         : [metadata.objectName, metadata.containerName, ...metadata.scopeNames],
     );
-    return (col: {
-      name: string;
-      type: Parameters<typeof isTypeaheadColumn>[0];
-    }): string | null => {
-      if (!isTypeaheadColumn(col.type)) {
+    return (field: EntityField): string | null => {
+      if (!NAMING_KINDS.has(field.kind)) {
         return null;
       }
-      if (known.has(col.name)) {
-        return col.name;
+      const name = field.columns[field.columns.length - 1];
+      if (known.has(name)) {
+        return name;
       }
-      const dot = col.name.indexOf('.');
-      const suffix = dot >= 0 ? col.name.substring(dot + 1) : null;
+      const dot = name.indexOf('.');
+      const suffix = dot >= 0 ? name.substring(dot + 1) : null;
       return suffix != null && known.has(suffix) ? suffix : null;
     };
   }, [metadata]);
@@ -138,21 +156,41 @@ export default function EntityDetail({
     };
   }, [handle, entity, id]);
 
-  const attributes = useMemo(() => {
+  const [showBlank, setShowBlank] = useState(false);
+  const sections = useMemo(() => {
     if (state.status !== 'done' || state.result.rows.length === 0) {
-      return [];
+      return null;
     }
     const row = state.result.rows[0];
     const needle = query.trim().toLowerCase();
-    return state.result.columns
-      .map((col, i) => ({col, value: formatValue(row.cells[i])}))
-      .filter(
-        ({col, value}) =>
-          needle === '' ||
-          col.name.toLowerCase().includes(needle) ||
-          value.toLowerCase().includes(needle),
-      );
-  }, [state, query]);
+    const fields = buildFields(state.result.columns).filter(f => !f.primaryKey);
+    const items = fields.map(f => {
+      const {a, b} = fieldValues(f, row);
+      return {f, a, b, blank: isBlank(a) && isBlank(b), changed: a !== b};
+    });
+    const matching = items.filter(
+      ({f, a, b}) =>
+        needle === '' ||
+        f.label.toLowerCase().includes(needle) ||
+        String(a ?? '')
+          .toLowerCase()
+          .includes(needle) ||
+        String(b ?? '')
+          .toLowerCase()
+          .includes(needle),
+    );
+    return {
+      total: items.length,
+      blank: matching.filter(x => x.blank).length,
+      groups: DETAIL_SECTIONS.map(section => ({
+        ...section,
+        items: matching
+          .filter(x => x.f.kind === section.kind && (showBlank || !x.blank))
+          // Changed values first, then in column order.
+          .sort((x, y) => Number(y.changed) - Number(x.changed)),
+      })).filter(g => g.items.length > 0),
+    };
+  }, [state, query, showBlank]);
 
   if (state.status === 'loading') {
     return <LoadingState compact label={`Loading ${entity}...`} />;
@@ -173,13 +211,15 @@ export default function EntityDetail({
   )}?${stringifyQs({
     filters: [{rules: [{stringAny: {column: state.primaryKey, values: [id]}}]}],
   })}`;
-  const columnCount = state.result.columns.length;
+  if (sections == null) {
+    return null;
+  }
 
   return (
     <Box>
       <Box sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 1.5}}>
         <Typography variant="subtitle2" sx={{flex: 1}}>
-          {`${columnCount} attributes`}
+          {`${sections.total} values`}
         </Typography>
         {/* A full navigation: the entity view reads its filters from the URL
             on mount, including when this is the page already open. */}
@@ -190,86 +230,155 @@ export default function EntityDetail({
           <ArrowUpRight size={14} aria-hidden />
         </Link>
       </Box>
-      {columnCount > 12 && (
+      {sections.total > 12 && (
         <TextField
           size="small"
           fullWidth
-          placeholder="Find an attribute or value"
+          placeholder="Find a value"
           value={query}
           onChange={e => setQuery(e.target.value)}
+          slotProps={{htmlInput: {'aria-label': 'Find a value'}}}
           sx={{mb: 1.5}}
         />
       )}
-      <Box
-        component="dl"
-        sx={{
-          m: 0,
-          display: 'grid',
-          gridTemplateColumns: {xs: '1fr', sm: 'minmax(140px, 40%) 1fr'},
-          columnGap: 2,
-        }}>
-        {attributes.map(({col, value}) => {
-          const type = columnTypeInfo(col.type);
-          const linkEntity = linkEntityFor(col);
-          return (
-            <Box key={col.name} sx={{display: 'contents'}}>
-              <Box
-                component="dt"
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.75,
-                  py: 0.75,
-                  minWidth: 0,
-                }}>
-                <Typography
-                  variant="body2"
-                  sx={{color: COLOR.textTertiary, overflowWrap: 'anywhere'}}>
-                  {col.name}
-                </Typography>
-                {type.short !== '' && (
-                  <Tag small title={type.full}>
-                    {type.short}
-                  </Tag>
-                )}
-              </Box>
-              <Box
-                component="dd"
-                sx={{
-                  m: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.5,
-                  py: 0.75,
-                  minWidth: 0,
-                }}>
-                {linkEntity != null &&
-                value !== '' &&
-                !(linkEntity === entity && value === id) ? (
-                  <Box sx={{flex: 1, minWidth: 0}}>
-                    <EntityLink entity={linkEntity} id={value} />
-                  </Box>
-                ) : (
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      overflowWrap: 'anywhere',
-                      fontVariantNumeric: 'tabular-nums',
-                      flex: 1,
-                    }}>
-                    {value}
-                  </Typography>
-                )}
-                <CopyButton
-                  value={value}
-                  label={`Copy ${col.name}`}
-                  size={12}
-                />
-              </Box>
+      <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
+        {sections.groups.map(group => (
+          <Box component="section" key={group.kind}>
+            <Box
+              component="h3"
+              sx={{
+                ...EYEBROW_TEXT,
+                fontFamily: 'inherit',
+                m: 0,
+                mb: 0.5,
+                display: 'flex',
+                gap: 0.75,
+              }}>
+              {group.title}
+              {group.sub != null && (
+                <Box
+                  component="span"
+                  sx={{textTransform: 'none', letterSpacing: 0}}>
+                  {group.sub}
+                </Box>
+              )}
             </Box>
-          );
-        })}
+            <Box
+              component="dl"
+              sx={{
+                m: 0,
+                display: 'grid',
+                gridTemplateColumns: 'minmax(120px, 38%) minmax(0, 1fr) 24px',
+                alignItems: 'start',
+                columnGap: 2,
+              }}>
+              {group.items.map(({f, a, b, changed}) => {
+                const linkEntity = linkEntityFor(f);
+                const text = (v: CellValue) =>
+                  v == null ? '—' : typeof v === 'number' ? String(v) : v;
+                const shown = (v: CellValue) =>
+                  typeof v === 'number' ? formatDetail(v) : text(v);
+                const value = (v: CellValue, strong: boolean) =>
+                  linkEntity != null &&
+                  typeof v === 'string' &&
+                  !(linkEntity === entity && v === id) ? (
+                    <Box component="span" sx={{minWidth: 0}}>
+                      <EntityLink entity={linkEntity} id={v} />
+                    </Box>
+                  ) : (
+                    <Box
+                      component="span"
+                      sx={{
+                        overflowWrap: 'anywhere',
+                        fontVariantNumeric: 'tabular-nums',
+                        fontWeight: strong ? 600 : undefined,
+                        color:
+                          v == null || v === 0 ? COLOR.textTertiary : undefined,
+                      }}
+                      title={typeof v === 'number' ? String(v) : undefined}>
+                      {shown(v)}
+                    </Box>
+                  );
+                return (
+                  <Box key={f.key} sx={{display: 'contents'}}>
+                    <Box
+                      component="dt"
+                      title={f.columns.join(' · ')}
+                      sx={{
+                        py: 0.75,
+                        minWidth: 0,
+                        color: COLOR.textTertiary,
+                        fontSize: TEXT.sm,
+                        overflowWrap: 'anywhere',
+                      }}>
+                      {f.label}
+                    </Box>
+                    <Box
+                      component="dd"
+                      sx={{
+                        m: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        columnGap: 0.5,
+                        py: 0.75,
+                        minWidth: 0,
+                        fontSize: TEXT.sm,
+                      }}>
+                      {changed ? (
+                        <>
+                          <Box
+                            component="span"
+                            sx={{color: COLOR.textTertiary, minWidth: 0}}>
+                            {value(a, false)}
+                          </Box>
+                          <Box
+                            component="span"
+                            aria-label="to"
+                            sx={{color: COLOR.textDecorative}}>
+                            →
+                          </Box>
+                          {value(b, true)}
+                          {typeof a === 'number' && typeof b === 'number' && (
+                            <Box
+                              component="span"
+                              sx={{
+                                color: COLOR.textTertiary,
+                                fontSize: TEXT.xs,
+                                fontVariantNumeric: 'tabular-nums',
+                              }}>
+                              ({formatSignedCompact(b - a)})
+                            </Box>
+                          )}
+                        </>
+                      ) : (
+                        value(b, false)
+                      )}
+                    </Box>
+                    <Box component="dd" sx={{m: 0, pt: 0.5}}>
+                      <CopyButton
+                        value={text(b)}
+                        label={`Copy ${f.label}`}
+                        size={12}
+                      />
+                    </Box>
+                  </Box>
+                );
+              })}
+            </Box>
+          </Box>
+        ))}
       </Box>
+      {sections.blank > 0 && (
+        <Button
+          size="small"
+          onClick={() => setShowBlank(v => !v)}
+          sx={{mt: 1.5, ml: -0.5}}>
+          {showBlank
+            ? 'Hide the values that are 0 or empty'
+            : `Show ${sections.blank} more ${sections.blank === 1 ? 'value' : 'values'} that are 0 or empty`}
+        </Button>
+      )}
     </Box>
   );
 }

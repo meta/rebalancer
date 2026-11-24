@@ -48,6 +48,11 @@ export interface EntityPanePayload {
   runId: string;
 }
 
+/** The pane row key of an entity: its rows carry `data-pane-row` = this. */
+export function entityRowKey(entity: string, id: string): string {
+  return `${entity}|${id}`;
+}
+
 export type DetailPaneContent =
   | {kind: 'expression'; payload: ExpressionPanePayload; tab: ExpressionPaneTab}
   | {kind: 'entity'; payload: EntityPanePayload};

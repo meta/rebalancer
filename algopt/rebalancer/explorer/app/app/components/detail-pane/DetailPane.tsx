@@ -44,6 +44,8 @@ import {
 } from '@/lib/ui-tokens';
 
 import {
+  entityRowKey,
+  type DetailPaneContent,
   InPaneContext,
   paneTitle,
   useDetailPane,
@@ -191,28 +193,51 @@ function paneRows(): HTMLElement[] {
 }
 
 /**
- * Opens the row `offset` places from the expression shown, keeping the tab,
- * by pressing that row's own Spec or Tree control. Returns false at either end
- * of the list.
+ * Opens the row `offset` places from the one shown, keeping the tab, by
+ * pressing that row's own `control` (an expression's Spec or Tree, an
+ * entity's name). Returns false at either end of the list.
  */
 export function stepPaneRow(
-  expressionId: number,
-  tab: ExpressionPaneTab,
+  rowKey: string,
+  control: string,
   offset: number,
 ): boolean {
   const rows = paneRows();
-  const i = rows.findIndex(r => r.dataset.paneRow === String(expressionId));
+  const i = rows.findIndex(r => r.dataset.paneRow === rowKey);
   const next = i < 0 ? null : rows[i + offset];
   if (next == null) {
     return false;
   }
-  const control = next.querySelector<HTMLElement>(`[data-pane-open="${tab}"]`);
-  if (control == null) {
+  const button = next.querySelector<HTMLElement>(
+    `[data-pane-open="${control}"]`,
+  );
+  if (button == null) {
     return false;
   }
-  control.click();
+  button.click();
   next.scrollIntoView({block: 'nearest'});
   return true;
+}
+
+/** A value for a double-quoted CSS attribute selector. */
+function cssString(value: string): string {
+  return value.replace(/["\\]/g, '\\$&');
+}
+
+/** What the open panel steps through, if its row is on the page. */
+function paneStep(
+  content: DetailPaneContent | null,
+): {rowKey: string; control: string} | null {
+  if (content?.kind === 'expression') {
+    return {rowKey: String(content.payload.expressionId), control: content.tab};
+  }
+  if (content?.kind === 'entity') {
+    return {
+      rowKey: entityRowKey(content.payload.entity, content.payload.id),
+      control: 'entity',
+    };
+  }
+  return null;
 }
 
 /**
@@ -220,15 +245,9 @@ export function stepPaneRow(
  * page without closing the pane. It reads the rows when the pane shows a new
  * expression, so the count follows the page's current filters.
  */
-function PaneStepper({
-  expressionId,
-  tab,
-}: {
-  expressionId: number;
-  tab: ExpressionPaneTab;
-}) {
+function PaneStepper({rowKey, control}: {rowKey: string; control: string}) {
   const rows = paneRows();
-  const index = rows.findIndex(r => r.dataset.paneRow === String(expressionId));
+  const index = rows.findIndex(r => r.dataset.paneRow === rowKey);
   if (index < 0 || rows.length < 2) {
     return null;
   }
@@ -251,7 +270,7 @@ function PaneStepper({
             size="small"
             aria-label="Previous row"
             disabled={index === 0}
-            onClick={() => stepPaneRow(expressionId, tab, -1)}>
+            onClick={() => stepPaneRow(rowKey, control, -1)}>
             <ChevronUp size={16} />
           </IconButton>
         </span>
@@ -274,7 +293,7 @@ function PaneStepper({
             size="small"
             aria-label="Next row"
             disabled={index === rows.length - 1}
-            onClick={() => stepPaneRow(expressionId, tab, 1)}>
+            onClick={() => stepPaneRow(rowKey, control, 1)}>
             <ChevronDown size={16} />
           </IconButton>
         </span>
@@ -376,7 +395,10 @@ function ExpressionPane({
           </Box>
           <HeaderActions
             stepper={
-              <PaneStepper expressionId={payload.expressionId} tab={tab} />
+              <PaneStepper
+                rowKey={String(payload.expressionId)}
+                control={tab}
+              />
             }
             wide={wide}
             onToggleWide={onToggleWide}
@@ -512,6 +534,12 @@ function EntityPane({
           </Box>
         </Box>
         <HeaderActions
+          stepper={
+            <PaneStepper
+              rowKey={entityRowKey(payload.entity, payload.id)}
+              control="entity"
+            />
+          }
           wide={wide}
           onToggleWide={onToggleWide}
           onClose={onClose}
@@ -545,15 +573,17 @@ export default function DetailPane() {
   );
   const backTo = stack.length > 0 ? paneTitle(stack[stack.length - 1]) : null;
 
-  // j / k step to the next / previous row while an expression is open.
-  const expression = content?.kind === 'expression' ? content : null;
+  // j / k step to the next / previous row of the page.
+  const step = paneStep(content);
+  const stepKey = step?.rowKey ?? null;
+  const stepControl = step?.control ?? null;
   const stepRow = useCallback(
     (offset: number) => {
-      if (expression != null) {
-        stepPaneRow(expression.payload.expressionId, expression.tab, offset);
+      if (stepKey != null && stepControl != null) {
+        stepPaneRow(stepKey, stepControl, offset);
       }
     },
-    [expression],
+    [stepKey, stepControl],
   );
 
   useEffect(() => {
@@ -601,9 +631,10 @@ export default function DetailPane() {
         },
       }}>
       <InPaneContext.Provider value={true}>
-        {expression != null && (
-          // The row shown in the pane stays highlighted in its list.
-          <style>{`[data-pane-row="${expression.payload.expressionId}"] { background-color: ${ACCENT_50}; }`}</style>
+        {stepKey != null && (
+          // The row shown in the pane stays highlighted in its list; table
+          // rows paint their cells, so those too.
+          <style>{`[data-pane-row="${cssString(stepKey)}"], [data-pane-row="${cssString(stepKey)}"] > td { background-color: ${ACCENT_50} !important; }`}</style>
         )}
         {content?.kind === 'expression' && (
           <ExpressionPane
