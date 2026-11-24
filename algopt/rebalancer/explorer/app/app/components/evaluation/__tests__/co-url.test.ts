@@ -18,6 +18,10 @@ import {describe, expect, it} from 'vitest';
 
 import type {Assignments} from '@/app/components/evaluation/AssignmentCard';
 import {
+  DEFAULT_LIST_STATE,
+  type COListState,
+} from '@/app/components/evaluation/co-list';
+import {
   buildCOSearchParams,
   parseCOSearchParams,
 } from '@/app/components/evaluation/ConstraintsObjectivesView.url';
@@ -86,5 +90,37 @@ describe('C&O URL', () => {
     expect(
       parseCOSearchParams(new URLSearchParams('detailExpr=abc')).detailExpr,
     ).toBeNull();
+  });
+
+  it('round-trips the list state and leaves defaults out', () => {
+    expect(buildCOSearchParams(assignments, true, [], ms)).not.toMatch(
+      /\b(q|kind|status|tuple|group|sort|dir|penalty)=/,
+    );
+    const list: COListState = {
+      search: 'spread',
+      facets: {
+        kinds: ['objective'],
+        statuses: ['improved', 'regressed'],
+        tuples: [1, 3],
+      },
+      group: 'none',
+      sort: 'absChange',
+      dir: 'desc',
+      penaltyShown: false,
+    };
+    const search = buildCOSearchParams(assignments, true, [], ms, null, list);
+    expect(parseCOSearchParams(new URLSearchParams(search)).list).toEqual(list);
+  });
+
+  it('drops unknown list values', () => {
+    const parsed = parseCOSearchParams(
+      new URLSearchParams(
+        'kind=objective,goal&status=fixed,bad&tuple=2,x&sort=toString',
+      ),
+    );
+    expect(parsed.list).toEqual({
+      ...DEFAULT_LIST_STATE,
+      facets: {kinds: ['objective'], statuses: ['fixed'], tuples: [2]},
+    });
   });
 });

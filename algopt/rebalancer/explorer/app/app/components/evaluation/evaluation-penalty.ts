@@ -21,28 +21,3 @@ export function isRowChanged(
 ): boolean {
   return row.delta !== 0 || (isPenaltyShown && row.penaltyDelta !== 0);
 }
-
-/** Shows or hides the penalty columns of one table. */
-export function withTablePenaltyShown(
-  hiddenTables: ReadonlySet<number>,
-  tableIndex: number,
-  show: boolean,
-): ReadonlySet<number> {
-  const next = new Set(hiddenTables);
-  if (show) {
-    next.delete(tableIndex);
-  } else {
-    next.add(tableIndex);
-  }
-  return next;
-}
-
-/** The tables with penalty columns hidden after "Show all penalties". */
-export function withAllPenaltiesShown(
-  showAll: boolean,
-  tableCount: number,
-): ReadonlySet<number> {
-  return showAll
-    ? new Set()
-    : new Set(Array.from({length: tableCount}, (_, index) => index));
-}

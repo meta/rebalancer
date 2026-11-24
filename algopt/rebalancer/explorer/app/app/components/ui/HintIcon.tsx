@@ -26,7 +26,11 @@ export default function HintIcon({
         role="img"
         aria-label={label}
         tabIndex={0}
-        onClick={e => e.stopPropagation()}
+        onClick={e => {
+          // Inside a <label>, a click would also toggle its control.
+          e.preventDefault();
+          e.stopPropagation();
+        }}
         sx={{
           position: 'relative',
           display: 'inline-flex',

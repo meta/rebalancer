@@ -110,29 +110,3 @@ export function formatIndexRanges(indices: number[]): string {
   }
   return parts.join(', ');
 }
-
-/**
- * One line naming several C&O tables, e.g. "Constraints, Objectives at
- * tuple index 0, 2, 4–6". Labels stay as the tables show them.
- */
-export function describeTables(
-  tables: Array<{
-    type: 'CONSTRAINT' | 'OBJECTIVE';
-    label: string;
-    tupleIndex: number;
-  }>,
-): string {
-  const parts: string[] = [];
-  const tupled: number[] = [];
-  for (const t of tables) {
-    if (t.type === 'OBJECTIVE' && t.label !== 'Objectives') {
-      tupled.push(t.tupleIndex);
-    } else {
-      parts.push(t.label);
-    }
-  }
-  if (tupled.length > 0) {
-    parts.push(`Objectives at tuple index ${formatIndexRanges(tupled)}`);
-  }
-  return parts.join(', ');
-}

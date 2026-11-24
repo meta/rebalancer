@@ -2,6 +2,16 @@ import type {
   Assignments,
   UIAssignment,
 } from '@/app/components/evaluation/AssignmentCard';
+import {
+  CONSTRAINT_STATUSES,
+  DEFAULT_LIST_STATE,
+  OBJECTIVE_STATUSES,
+  SORT_LABEL,
+  type COListState,
+  type RowKind,
+  type RowStatus,
+  type SortKey,
+} from '@/app/components/evaluation/co-list';
 import type {MoveSetsViewState} from '@/app/components/evaluation/MoveSetsTable';
 import type {Filter} from '@/lib/rebalancer-explorer-types';
 import {OrderDirection} from '@/lib/rebalancer-explorer-types';
@@ -44,6 +54,40 @@ export interface ParsedURLState {
    * written back to the URL.
    */
   focusTuple: number | null;
+  list: COListState;
+}
+
+const KINDS = new Set<string>(['objective', 'constraint']);
+const STATUSES = new Set<string>([
+  ...OBJECTIVE_STATUSES,
+  ...CONSTRAINT_STATUSES,
+]);
+
+/** The comma-separated list in `value`, keeping only known items. */
+function csv(value: unknown, keep: (item: string) => boolean): string[] {
+  const s = asString(value);
+  return s == null
+    ? []
+    : s.split(',').filter(item => item !== '' && keep(item));
+}
+
+function parseListState(parsed: Record<string, unknown>): COListState {
+  const sort = asString(parsed.sort);
+  return {
+    search: asString(parsed.q) ?? '',
+    facets: {
+      kinds: csv(parsed.kind, k => KINDS.has(k)) as RowKind[],
+      statuses: csv(parsed.status, k => STATUSES.has(k)) as RowStatus[],
+      tuples: csv(parsed.tuple, k => /^\d+$/.test(k)).map(Number),
+    },
+    group: parsed.group === 'none' ? 'none' : 'tuple',
+    sort:
+      sort != null && Object.hasOwn(SORT_LABEL, sort)
+        ? (sort as SortKey)
+        : DEFAULT_LIST_STATE.sort,
+    dir: parsed.dir === 'desc' ? 'desc' : 'asc',
+    penaltyShown: parsed.penalty !== '0',
+  };
 }
 
 /** The detail pane state written to the URL; null when it is closed. */
@@ -110,6 +154,7 @@ export function parseCOSearchParams(
       Number.isInteger(Number(parsed.focusTuple))
         ? Number(parsed.focusTuple)
         : null,
+    list: parseListState(parsed),
   };
 }
 
@@ -123,6 +168,7 @@ export function buildCOSearchParams(
   evalFilters: Filter[],
   ms: MoveSetsViewState,
   detail: CODetailState | null = null,
+  list: COListState = DEFAULT_LIST_STATE,
 ): string {
   const obj: Record<string, unknown> = {};
 
@@ -189,6 +235,32 @@ export function buildCOSearchParams(
   }
   if (!ms.isMinimized) {
     obj.msMinimized = '0';
+  }
+
+  // Constraints & objectives list
+  if (list.search !== '') {
+    obj.q = list.search;
+  }
+  if (list.facets.kinds.length > 0) {
+    obj.kind = list.facets.kinds.join(',');
+  }
+  if (list.facets.statuses.length > 0) {
+    obj.status = list.facets.statuses.join(',');
+  }
+  if (list.facets.tuples.length > 0) {
+    obj.tuple = list.facets.tuples.join(',');
+  }
+  if (list.group !== 'tuple') {
+    obj.group = list.group;
+  }
+  if (list.sort !== DEFAULT_LIST_STATE.sort) {
+    obj.sort = list.sort;
+  }
+  if (list.dir !== 'asc') {
+    obj.dir = list.dir;
+  }
+  if (!list.penaltyShown) {
+    obj.penalty = '0';
   }
 
   // Detail pane

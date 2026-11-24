@@ -3,8 +3,6 @@ import {describe, expect, it} from 'vitest';
 import {
   hasAnyPenalty,
   isRowChanged,
-  withAllPenaltiesShown,
-  withTablePenaltyShown,
 } from '@/app/components/evaluation/evaluation-penalty';
 import type {
   ExpressionResult,
@@ -46,18 +44,5 @@ describe('isRowChanged', () => {
 
   it('drops a row where neither value nor penalty changed', () => {
     expect(isRowChanged({delta: 0, penaltyDelta: 0}, true)).toBe(false);
-  });
-});
-
-describe('penalty visibility', () => {
-  it('hides and shows one table', () => {
-    const hidden = withTablePenaltyShown(new Set(), 2, false);
-    expect([...hidden]).toEqual([2]);
-    expect([...withTablePenaltyShown(hidden, 2, true)]).toEqual([]);
-  });
-
-  it('hides every table and shows them all again', () => {
-    expect([...withAllPenaltiesShown(false, 3)]).toEqual([0, 1, 2]);
-    expect([...withAllPenaltiesShown(true, 3)]).toEqual([]);
   });
 });

@@ -21,24 +21,30 @@ function ruleLabel(rule: FilterRule): string {
   return `${rule.stringNe.column} ≠ ${rule.stringNe.value}`;
 }
 
+/** A filter set outside the filter editor, such as a facet or a search. */
+export interface ExtraChip {
+  key: string;
+  label: string;
+  onRemove: () => void;
+}
+
 /**
  * The active filters as removable chips above the results, with "Clear all".
- * The filter editor above stays where filters are added and changed.
+ * The filter editor above stays where filters are added and changed. `extra`
+ * chips come first; with them, "Clear all" calls `onClearAll`.
  */
 export default function FilterChips({
   filters,
   onChange,
+  extra = [],
+  onClearAll,
 }: {
   filters: Filter[];
   onChange: (filters: Filter[]) => void;
+  extra?: readonly ExtraChip[];
+  onClearAll?: () => void;
 }) {
-  const chips = filters.flatMap((f, fi) =>
-    f.rules.map((rule, ri) => ({fi, ri, label: ruleLabel(rule)})),
-  );
-  if (chips.length === 0) {
-    return null;
-  }
-  const remove = (fi: number, ri: number) =>
+  const removeRule = (fi: number, ri: number) =>
     onChange(
       filters
         .map((f, i) =>
@@ -46,6 +52,19 @@ export default function FilterChips({
         )
         .filter(f => f.rules.length > 0),
     );
+  const chips = [
+    ...extra,
+    ...filters.flatMap((f, fi) =>
+      f.rules.map((rule, ri) => ({
+        key: `${fi}:${ri}`,
+        label: ruleLabel(rule),
+        onRemove: () => removeRule(fi, ri),
+      })),
+    ),
+  ];
+  if (chips.length === 0) {
+    return null;
+  }
   return (
     <Box
       sx={{
@@ -59,7 +78,7 @@ export default function FilterChips({
       <span>Filtered by</span>
       {chips.map(c => (
         <Box
-          key={`${c.fi}:${c.ri}`}
+          key={c.key}
           component="span"
           sx={{
             display: 'inline-flex',
@@ -89,7 +108,7 @@ export default function FilterChips({
           <Tooltip title="Remove this filter">
             <ButtonBase
               aria-label={`Remove filter ${c.label}`}
-              onClick={() => remove(c.fi, c.ri)}
+              onClick={c.onRemove}
               sx={{
                 width: 24,
                 height: 24,
@@ -106,7 +125,7 @@ export default function FilterChips({
       <Link
         component="button"
         type="button"
-        onClick={() => onChange([])}
+        onClick={onClearAll ?? (() => onChange([]))}
         sx={{fontSize: TEXT.xs, fontWeight: WEIGHT.semibold, ml: 0.5}}>
         Clear all
       </Link>

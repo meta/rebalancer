@@ -18,7 +18,6 @@ import {describe, expect, it} from 'vitest';
 
 import {
   calculatePercentageChange,
-  describeTables,
   formatPercentChange,
   formatIndexRanges,
   joinEvaluationRows,
@@ -103,41 +102,5 @@ describe('formatIndexRanges', () => {
     [[1, 2, 3, 7], '1–3, 7'],
   ])('%j -> %s', (indices, text) => {
     expect(formatIndexRanges(indices)).toBe(text);
-  });
-});
-
-describe('describeTables', () => {
-  it('names constraints and compresses tuple indices', () => {
-    expect(
-      describeTables([
-        {type: 'CONSTRAINT', label: 'Constraints', tupleIndex: 0},
-        {
-          type: 'OBJECTIVE',
-          label: 'Objectives at tuple index 0',
-          tupleIndex: 0,
-        },
-        {
-          type: 'OBJECTIVE',
-          label: 'Objectives at tuple index 2',
-          tupleIndex: 2,
-        },
-        {
-          type: 'OBJECTIVE',
-          label: 'Objectives at tuple index 3',
-          tupleIndex: 3,
-        },
-        {
-          type: 'OBJECTIVE',
-          label: 'Objectives at tuple index 4',
-          tupleIndex: 4,
-        },
-      ]),
-    ).toBe('Constraints, Objectives at tuple index 0, 2–4');
-  });
-
-  it('keeps a single untupled objectives table as is', () => {
-    expect(
-      describeTables([{type: 'OBJECTIVE', label: 'Objectives', tupleIndex: 0}]),
-    ).toBe('Objectives');
   });
 });

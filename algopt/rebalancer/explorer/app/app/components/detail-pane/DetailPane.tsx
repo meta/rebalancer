@@ -602,8 +602,8 @@ export default function DetailPane() {
       }}>
       <InPaneContext.Provider value={true}>
         {expression != null && (
-          // The row shown in the pane stays highlighted in its table.
-          <style>{`[data-pane-row="${expression.payload.expressionId}"] > td { background-color: ${ACCENT_50}; }`}</style>
+          // The row shown in the pane stays highlighted in its list.
+          <style>{`[data-pane-row="${expression.payload.expressionId}"] { background-color: ${ACCENT_50}; }`}</style>
         )}
         {content?.kind === 'expression' && (
           <ExpressionPane

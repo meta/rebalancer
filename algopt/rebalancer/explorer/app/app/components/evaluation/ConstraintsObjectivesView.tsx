@@ -1,6 +1,13 @@
 'use client';
 
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import {useSearchParams} from 'next/navigation';
 
@@ -19,14 +26,27 @@ import {useUrlStateSync} from '@/lib/url-state';
 
 import AssignmentCard from '@/app/components/evaluation/AssignmentCard';
 import type {Assignments} from '@/app/components/evaluation/AssignmentCard';
-import {buildTableDescriptors} from '@/app/components/evaluation/ConstraintsObjectivesView.tables';
+import {
+  buildRows,
+  facetCounts,
+  STATUS_LABEL,
+  type COListState,
+  type COQuery,
+  type RowKind,
+} from '@/app/components/evaluation/co-list';
+import COFacets from '@/app/components/evaluation/COFacets';
+import COList from '@/app/components/evaluation/COList';
 import {
   buildCOSearchParams,
   parseCOSearchParams,
   type CODetailState,
 } from '@/app/components/evaluation/ConstraintsObjectivesView.url';
+import {
+  compileEvaluationFilters,
+  matchesEvaluationFilters,
+} from '@/app/components/evaluation/evaluation-filters';
+import {hasAnyPenalty} from '@/app/components/evaluation/evaluation-penalty';
 import {joinEvaluationRows} from '@/app/components/evaluation/evaluation-rows';
-import EvaluationSection from '@/app/components/evaluation/EvaluationSection';
 import {
   getFilterRuleColumn,
   pruneFiltersByColumns,
@@ -88,15 +108,18 @@ export default function ConstraintsObjectivesView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Hide unchanged — URL-synced state; per-table control lives in EvaluationSection
+  // Changed or all rows — URL-synced
   const [hideAllUnchanged, setHideAllUnchanged] = useState(
     urlState.hideAllUnchanged,
   );
 
-  // Evaluation filters — URL-synced, passed down to EvaluationSection
+  // Evaluation filters — URL-synced, edited in the list's filter editor
   const [evalFilters, setEvalFilters] = useState<Filter[]>(
     urlState.evalFilters,
   );
+
+  // Search, facets, grouping, sort and penalties of the list — URL-synced
+  const [listState, setListState] = useState<COListState>(urlState.list);
 
   // MoveSets table view state — initialized from URL
   const [moveSetsState, setMoveSetsState] = useState<MoveSetsViewState>(() => ({
@@ -264,10 +287,12 @@ export default function ConstraintsObjectivesView() {
     doFetch();
   }, [doFetch]);
 
-  // Build table descriptors from src expressions
-  const tableDescriptors = useMemo(
-    () => buildTableDescriptors(srcEvaluation?.expressions ?? []),
-    [srcEvaluation],
+  const rows = useMemo(
+    () =>
+      srcEvaluation != null && dstEvaluation != null
+        ? buildRows(srcEvaluation.expressions, dstEvaluation.expressions)
+        : [],
+    [srcEvaluation, dstEvaluation],
   );
 
   // Memoize thrift-format assignments so EvaluationTable receives stable
@@ -279,13 +304,142 @@ export default function ConstraintsObjectivesView() {
   const srcLabel = assignmentShortLabel(assignments.src);
   const dstLabel = assignmentShortLabel(assignments.dst);
   const maxTupleIndex = useMemo(
-    () => Math.max(0, ...tableDescriptors.map(d => d.tupleIndex)),
-    [tableDescriptors],
+    () => Math.max(0, ...rows.map(r => r.tupleIndex ?? 0)),
+    [rows],
   );
   const destinationAssignment = useMemo(
     () => toThriftAssignment(assignments.dst),
     [assignments.dst],
   );
+
+  // Typing in the search or filter editor never blocks on re-filtering the
+  // list.
+  const search = useDeferredValue(listState.search);
+  const appliedFilters = useDeferredValue(evalFilters);
+  const hasPenalty = useMemo(
+    () => hasAnyPenalty(srcEvaluation?.expressions ?? []),
+    [srcEvaluation],
+  );
+  const query: COQuery = useMemo(() => {
+    const compiled =
+      appliedFilters.length > 0
+        ? compileEvaluationFilters(appliedFilters)
+        : null;
+    return {
+      search,
+      facets: listState.facets,
+      changedOnly: hideAllUnchanged,
+      penaltyShown: hasPenalty && listState.penaltyShown,
+      matches:
+        compiled == null
+          ? null
+          : row => matchesEvaluationFilters(row, compiled),
+    };
+  }, [
+    search,
+    appliedFilters,
+    listState.facets,
+    listState.penaltyShown,
+    hideAllUnchanged,
+    hasPenalty,
+  ]);
+  const counts = useMemo(() => facetCounts(rows, query), [rows, query]);
+  const kinds = useMemo(() => {
+    const present = new Set(rows.map(r => r.kind));
+    return (['objective', 'constraint'] as RowKind[]).filter(k =>
+      present.has(k),
+    );
+  }, [rows]);
+  const tuples = useMemo(() => {
+    const names = new Map<number, string[]>();
+    for (const r of rows) {
+      if (r.tupleIndex != null) {
+        const list = names.get(r.tupleIndex) ?? [];
+        list.push(r.name);
+        names.set(r.tupleIndex, list);
+      }
+    }
+    return Array.from(names.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([tupleIndex, n]) => ({tupleIndex, names: n}));
+  }, [rows]);
+  const pane = useMemo(
+    () =>
+      handle == null
+        ? null
+        : {
+            handle,
+            sourceAssignment,
+            destinationAssignment,
+            srcLabel,
+            dstLabel,
+            maxTupleIndex,
+          },
+    [
+      handle,
+      sourceAssignment,
+      destinationAssignment,
+      srcLabel,
+      dstLabel,
+      maxTupleIndex,
+    ],
+  );
+  const {facets} = listState;
+  const extraChips = [
+    ...(listState.search !== ''
+      ? [
+          {
+            key: 'q',
+            label: `Search: ${listState.search}`,
+            onRemove: () => setListState(prev => ({...prev, search: ''})),
+          },
+        ]
+      : []),
+    ...facets.kinds.map(k => ({
+      key: `kind:${k}`,
+      label: `Kind: ${k === 'objective' ? 'Objective' : 'Constraint'}`,
+      onRemove: () =>
+        setListState(prev => ({
+          ...prev,
+          facets: {
+            ...prev.facets,
+            kinds: prev.facets.kinds.filter(x => x !== k),
+          },
+        })),
+    })),
+    ...facets.statuses.map(st => ({
+      key: `status:${st}`,
+      label: `Status: ${STATUS_LABEL[st]}`,
+      onRemove: () =>
+        setListState(prev => ({
+          ...prev,
+          facets: {
+            ...prev.facets,
+            statuses: prev.facets.statuses.filter(x => x !== st),
+          },
+        })),
+    })),
+    ...facets.tuples.map(t => ({
+      key: `tuple:${t}`,
+      label: `Tuple index: ${t}`,
+      onRemove: () =>
+        setListState(prev => ({
+          ...prev,
+          facets: {
+            ...prev.facets,
+            tuples: prev.facets.tuples.filter(x => x !== t),
+          },
+        })),
+    })),
+  ];
+  const clearAllFilters = useCallback(() => {
+    setListState(prev => ({
+      ...prev,
+      search: '',
+      facets: {kinds: [], statuses: [], tuples: []},
+    }));
+    setEvalFilters([]);
+  }, []);
 
   // The detail pane shows values for the A/B pair it was opened with; close
   // it when either assignment changes.
@@ -359,15 +513,14 @@ export default function ConstraintsObjectivesView() {
     <PageContainer>
       <PageHead
         title={'Constraints & Objectives'}
-        sub={
-          'Evaluate constraints and objectives w.r.t. different assignments: A is the baseline, B the assignment compared with it.'
-        }
+        sub="A is the baseline and B the assignment compared with it. Objectives are minimized in tuple index order, 0 first; constraints must stay at 0."
       />
       <COUrlSync
         assignments={assignments}
         hideAllUnchanged={hideAllUnchanged}
         evalFilters={evalFilters}
         moveSetsState={moveSetsState}
+        listState={listState}
       />
       <AssignmentCard
         assignments={assignments}
@@ -395,34 +548,80 @@ export default function ConstraintsObjectivesView() {
       {/* Error alert */}
       {error != null && <ErrorState>{error}</ErrorState>}
 
-      {/* Constraints & Objectives section */}
+      {/* Constraints & objectives: facets beside one grouped list */}
       {error == null &&
-        handle != null &&
+        pane != null &&
         srcEvaluation != null &&
         dstEvaluation != null && (
-          <Box sx={{position: 'relative'}} aria-busy={loading}>
-            {loading && (
-              <UpdatingOverlay label="Evaluating assignments..." floating />
-            )}
-            {/* Rows show the previous A/B until the new results arrive, so
-                they cannot open the pane meanwhile. */}
-            <div inert={loading}>
-              <EvaluationSection
-                srcEvaluation={srcEvaluation}
-                dstEvaluation={dstEvaluation}
-                tableDescriptors={tableDescriptors}
-                handle={handle}
-                sourceAssignment={sourceAssignment}
-                destinationAssignment={destinationAssignment}
-                hideAllUnchanged={hideAllUnchanged}
-                onHideAllUnchangedChange={setHideAllUnchanged}
-                evalFilters={evalFilters}
-                onEvalFiltersChange={setEvalFilters}
-                srcLabel={srcLabel}
-                dstLabel={dstLabel}
-                focusTupleIndex={urlState.focusTuple}
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: '250px minmax(0, 1fr)',
+              gap: 2,
+              alignItems: 'start',
+              '@media (max-width: 1180px)': {gridTemplateColumns: '1fr'},
+            }}>
+            <Box
+              sx={{
+                position: 'sticky',
+                top: 120,
+                maxHeight: 'calc(100vh - 136px)',
+                overflowY: 'auto',
+                '@media (max-width: 1180px)': {
+                  position: 'static',
+                  maxHeight: 'none',
+                },
+              }}>
+              <COFacets
+                search={listState.search}
+                onSearchChange={value =>
+                  setListState(prev => ({...prev, search: value}))
+                }
+                changedOnly={hideAllUnchanged}
+                onChangedOnlyChange={setHideAllUnchanged}
+                total={rows.length}
+                facets={listState.facets}
+                onFacetsChange={next =>
+                  setListState(prev => ({...prev, facets: next}))
+                }
+                counts={counts}
+                kinds={kinds}
+                tuples={tuples}
+                maxTupleIndex={maxTupleIndex}
               />
-            </div>
+            </Box>
+            <Box sx={{position: 'relative', minWidth: 0}} aria-busy={loading}>
+              {loading && (
+                <UpdatingOverlay label="Evaluating assignments..." floating />
+              )}
+              {/* Rows show the previous A/B until the new results arrive, so
+                  they cannot open the pane meanwhile. */}
+              <div inert={loading}>
+                <COList
+                  rows={rows}
+                  query={query}
+                  group={listState.group}
+                  onGroupChange={group =>
+                    setListState(prev => ({...prev, group}))
+                  }
+                  sort={listState.sort}
+                  dir={listState.dir}
+                  onSortChange={(sort, dir) =>
+                    setListState(prev => ({...prev, sort, dir}))
+                  }
+                  hasPenalty={hasPenalty}
+                  onPenaltyShownChange={penaltyShown =>
+                    setListState(prev => ({...prev, penaltyShown}))
+                  }
+                  evalFilters={evalFilters}
+                  onEvalFiltersChange={setEvalFilters}
+                  extraChips={extraChips}
+                  onClearAll={clearAllFilters}
+                  pane={pane}
+                  focusTupleIndex={urlState.focusTuple}
+                />
+              </div>
+            </Box>
           </Box>
         )}
     </PageContainer>
@@ -439,11 +638,13 @@ function COUrlSync({
   hideAllUnchanged,
   evalFilters,
   moveSetsState,
+  listState,
 }: {
   assignments: Assignments;
   hideAllUnchanged: boolean;
   evalFilters: Filter[];
   moveSetsState: MoveSetsViewState;
+  listState: COListState;
 }) {
   const {content} = useDetailPane();
   const expressionId =
@@ -458,6 +659,7 @@ function COUrlSync({
       evalFilters,
       moveSetsState,
       detail,
+      listState,
     );
   }, [
     assignments,
@@ -466,6 +668,7 @@ function COUrlSync({
     moveSetsState,
     expressionId,
     tab,
+    listState,
   ]);
   return null;
 }
