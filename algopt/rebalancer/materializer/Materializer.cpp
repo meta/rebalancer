@@ -198,7 +198,8 @@ Map<ObjectId, ContainerId> Materializer::getUpdatesInInitialAssignment() {
     auto updates = specBuilder->getUpdatesInInitialAssignment();
 
     for (auto& [objectId, containerId] : updates) {
-      auto existingOverride = folly::get_ptr(updates, objectId);
+      auto existingOverride =
+          folly::get_ptr(updatesInInitialAssignment, objectId);
       if (existingOverride && *existingOverride != containerId) {
         throw std::runtime_error(
             fmt::format(
