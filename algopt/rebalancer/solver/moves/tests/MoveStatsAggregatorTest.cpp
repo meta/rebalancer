@@ -61,6 +61,23 @@ TEST(MoveStatsAggregatorTest, Empty) {
   EXPECT_EQ(0, aggregator.getStatsForObject(object(1000)).getTotalMoves());
 }
 
+TEST(MoveStatsAggregatorTest, ReasonCountsMergeLabelsAndSeparateTypes) {
+  MoveStats stats;
+  const auto first = make_shared<LabeledExpression>("capacity", nullptr, 1);
+  const auto second = make_shared<LabeledExpression>("capacity", nullptr, 1);
+  stats.bump(MoveStats::INVALID, first, 2);
+  stats.bump(MoveStats::INVALID, second, 3);
+  stats.bump(MoveStats::WORSE, first, 4);
+  stats.bump(MoveStats::INVALID, nullptr, 1);
+
+  const map<string, int64_t> expectedInvalid{{"capacity", 5}};
+  const map<string, int64_t> expectedWorse{{"capacity", 4}};
+  EXPECT_EQ(expectedInvalid, stats.getReasonCountsByName(MoveStats::INVALID));
+  EXPECT_EQ(expectedWorse, stats.getReasonCountsByName(MoveStats::WORSE));
+  stats.clear();
+  EXPECT_TRUE(stats.getReasonCountsByName(MoveStats::INVALID).empty());
+}
+
 TEST(MoveStatsAggregatorTest, AddInvalid) {
   const auto precision = createPrecision();
   auto c1 = make_shared<LabeledExpression>("c1", nullptr, 1);

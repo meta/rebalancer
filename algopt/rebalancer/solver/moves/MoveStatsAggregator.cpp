@@ -99,6 +99,15 @@ const PackerMap<LabeledExpressionPtr, int64_t>& MoveStats::getWorseMoveReasons()
   return reasons_[WORSE];
 }
 
+std::map<std::string, int64_t> MoveStats::getReasonCountsByName(
+    const Type type) const {
+  std::map<std::string, int64_t> exprNameToCount;
+  for (const auto& [expression, count] : reasons_[type]) {
+    exprNameToCount[expression->name] += count;
+  }
+  return exprNameToCount;
+}
+
 void MoveStats::incrNumTimeouts() {
   numTimeouts_ += 1;
 }

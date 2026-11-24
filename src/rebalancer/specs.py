@@ -46,7 +46,6 @@
 # ``ObjectsToExploreOptions``), exactly one arm key must be present at runtime;
 # this is validated by the C++ binding, not by TypedDict.
 
-# pyre-strict
 
 from __future__ import annotations
 
@@ -1319,6 +1318,10 @@ class ConstraintParams(TypedDict, total=False):
     tuplePosIfBroken: int  # default 0
 
 
+class EvalReasonBreakdownSpec(TypedDict, total=False):
+    pass
+
+
 class MoveStatsSpec(TypedDict, total=False):
     trackContainers: bool  # default False
     trackObjects: bool  # default False
@@ -1326,6 +1329,7 @@ class MoveStatsSpec(TypedDict, total=False):
     printTrackedObjectStats: bool  # default False
     printSourceContainersWhitelist: list[str]
     showAllChangedObjectivesInMovesSummary: bool  # default False
+    evalReasonBreakdownSpec: EvalReasonBreakdownSpec
 
 
 class ManifoldBackupParams(TypedDict, total=False):
@@ -1514,6 +1518,11 @@ class MovesSummary(TypedDict, total=False):
     cycleId: int
 
 
+class EvalReasonBreakdown(TypedDict, total=False):
+    constraintToNumInvalidEvals: dict[str, int]
+    objectiveToNumWorseEvals: dict[str, int]
+
+
 class SolverEvalStats(TypedDict, total=False):
     avgEvalSpeed: float
     numEvals: int
@@ -1526,6 +1535,7 @@ class SolverEvalStats(TypedDict, total=False):
     findWorstDurationSecs: float
     numCycles: int
     numPrunedEvals: int
+    evalReasonBreakdown: EvalReasonBreakdown
 
 
 class SolverMoveStats(TypedDict, total=False):

@@ -113,7 +113,9 @@ std::string EvalSummary::reasons(std::optional<size_t> truncate) const {
 std::optional<interface::SolverEvalStats> EvalSummary::getSolverEvalStats(
     double evalDuration,
     double timeToFindWorstContainers,
-    int32_t numCycles) const {
+    int32_t numCycles,
+    const std::optional<interface::EvalReasonBreakdownSpec>&
+        reasonBreakdownSpec) const {
   auto totalMoves = stats_.getTotalMoves();
   if (totalMoves == 0) {
     return std::nullopt;
@@ -131,6 +133,14 @@ std::optional<interface::SolverEvalStats> EvalSummary::getSolverEvalStats(
   *evalStats.numEvalTimeouts() = static_cast<int32_t>(stats_.getNumTimeouts());
   *evalStats.numCycles() = numCycles;
   *evalStats.numPrunedEvals() = stats_.getNumPruned();
+  if (reasonBreakdownSpec) {
+    interface::EvalReasonBreakdown breakdown;
+    breakdown.constraintToNumInvalidEvals() =
+        stats_.getReasonCountsByName(MoveStats::INVALID);
+    breakdown.objectiveToNumWorseEvals() =
+        stats_.getReasonCountsByName(MoveStats::WORSE);
+    evalStats.evalReasonBreakdown() = std::move(breakdown);
+  }
   return evalStats;
 }
 

@@ -38,7 +38,9 @@ class EvalSummary {
   std::optional<interface::SolverEvalStats> getSolverEvalStats(
       double evalDuration,
       double timeToFindWorstContainers,
-      int32_t numCycles) const;
+      int32_t numCycles,
+      const std::optional<interface::EvalReasonBreakdownSpec>&
+          reasonBreakdownSpec = std::nullopt) const;
 
   static void populateSummary(
       fmt::memory_buffer& buf,

@@ -32,6 +32,56 @@ using namespace facebook::rebalancer::interface;
 using namespace folly;
 using namespace std;
 
+namespace {
+AssignmentSolution solveWithReasonBreakdown(bool enabled) {
+  auto solver = initializeTestProblemSolver({.executorThreadCount = 1});
+  solver->disableLogging();
+  ManifoldBackupParams backup;
+  backup.uploadPolicy() = ManifoldUploadPolicy::NEVER;
+  solver->setManifoldBackupParams(backup);
+  solver->setObjectName("task");
+  solver->setContainerName("host");
+  solver->setAssignment(
+      std::vector<std::pair<std::string, std::vector<std::string>>>{
+          {"h1", {"s1", "s2", "s3", "s4"}}, {"h2", {}}});
+  solver->addObjectDimension(
+      "cpu",
+      folly::F14FastMap<std::string, double>{
+          {"s1", 10}, {"s2", 10}, {"s3", 10}, {"s4", 10}});
+  solver->addContainerDimension(
+      "cpu", std::map<std::string, double>{{"h1", 100}, {"h2", 100}});
+  BalanceSpec balance;
+  balance.scope() = "host";
+  balance.dimension() = "cpu";
+  balance.formula() = BalanceSpecFormula::LEGACY;
+  balance.fixAverageToInitial() = true;
+  solver->addGoal(balance);
+
+  MoveStatsSpec moveStats;
+  if (enabled) {
+    moveStats.evalReasonBreakdownSpec() = EvalReasonBreakdownSpec{};
+  }
+  solver->enableMoveStats(moveStats);
+  LocalSearchSolverSpec local;
+  local.solveTime() = 10;
+  local.moveTypeList()->push_back(
+      ProblemSolver::makeMoveTypeSpec(SingleMoveTypeSpec{}));
+  LocalSearchStageSolverSpec stages;
+  for (const auto stageId : folly::irange(2)) {
+    LocalSearchStageSpec stage;
+    stage.begin() = 0;
+    stage.end() = 1;
+    stage.solverSpec() = local;
+    if (stageId == 0) {
+      stage.solverSpec()->stopAfterMoves() = 1;
+    }
+    stages.stageSpecs()->push_back(std::move(stage));
+  }
+  solver->addSolver(stages);
+  return solver->solve();
+}
+} // namespace
+
 class ProblemSolverTest : public ::testing::TestWithParam<int> {};
 
 INSTANTIATE_TEST_CASE_P(NumThreads, ProblemSolverTest, testThreadCounts());
@@ -148,6 +198,46 @@ TEST(ProblemSolverExecutorTest, AddDoesNotBlockBeyondDefaultQueueSize) {
 
   EXPECT_TRUE(acceptedAll) << "producer blocked after " << acceptedOnTimeout
                            << " of " << taskCount << " tasks";
+}
+
+TEST(ProblemSolverReasonBreakdownTest, DefaultResponseDoesNotIncludeBreakdown) {
+  const auto solution = solveWithReasonBreakdown(false);
+  ASSERT_EQ(1, solution.solverSummaries()->size());
+  const auto& report = solution.solverSummaries()->front();
+  ASSERT_TRUE(report.evalStats().has_value());
+  EXPECT_FALSE(report.evalStats()->evalReasonBreakdown().has_value());
+  ASSERT_TRUE(report.stagesSummaries().has_value());
+  ASSERT_EQ(2, report.stagesSummaries()->size());
+  for (const auto& stage : *report.stagesSummaries()) {
+    ASSERT_TRUE(stage.evalStats().has_value());
+    EXPECT_FALSE(stage.evalStats()->evalReasonBreakdown().has_value());
+  }
+}
+
+TEST(
+    ProblemSolverReasonBreakdownTest,
+    OptInResponseIncludesStageAndSolveCounts) {
+  const auto solution = solveWithReasonBreakdown(true);
+  ASSERT_EQ(1, solution.solverSummaries()->size());
+  const auto& report = solution.solverSummaries()->front();
+  ASSERT_TRUE(report.evalStats().has_value());
+  ASSERT_TRUE(report.evalStats()->evalReasonBreakdown().has_value());
+  ASSERT_TRUE(report.stagesSummaries().has_value());
+  ASSERT_EQ(2, report.stagesSummaries()->size());
+  EvalReasonBreakdown expected;
+  for (const auto& stage : *report.stagesSummaries()) {
+    ASSERT_TRUE(stage.evalStats().has_value());
+    ASSERT_TRUE(stage.evalStats()->evalReasonBreakdown().has_value());
+    const auto& breakdown = *stage.evalStats()->evalReasonBreakdown();
+    for (const auto& [reason, count] :
+         *breakdown.constraintToNumInvalidEvals()) {
+      expected.constraintToNumInvalidEvals()[reason] += count;
+    }
+    for (const auto& [reason, count] : *breakdown.objectiveToNumWorseEvals()) {
+      expected.objectiveToNumWorseEvals()[reason] += count;
+    }
+  }
+  EXPECT_EQ(expected, *report.evalStats()->evalReasonBreakdown());
 }
 
 class ProblemSolverOptimalTest

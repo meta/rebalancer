@@ -117,6 +117,8 @@ enum EndReason {
   UNABLE_TO_FIND_IMPROVING_MOVES = 11,
 }
 
+struct EvalReasonBreakdownSpec {}
+
 struct MoveStatsSpec {
   1: bool trackContainers = false;
   2: bool trackObjects = false;
@@ -128,6 +130,8 @@ struct MoveStatsSpec {
   // by default, when using stageSolver, only the changed objectives of the stage are populated in MovesSummary.objectives;
   // if field below is set to 'true', moveSummary.objectives will have all changed objectives
   6: bool showAllChangedObjectivesInMovesSummary = false;
+  // Set to include cumulative reason counts in SolverEvalStats.
+  7: optional EvalReasonBreakdownSpec evalReasonBreakdownSpec;
 }
 
 struct SingleObjectiveSummary {
@@ -189,6 +193,13 @@ struct MovesSummary {
   7: optional i32 cycleId;
 }
 
+struct EvalReasonBreakdown {
+  // If a move breaks multiple constraints, only the first broken one counts.
+  1: map<string, i64> constraintToNumInvalidEvals;
+  // If a move worsens multiple objectives, only the largest deterioration counts.
+  2: map<string, i64> objectiveToNumWorseEvals;
+}
+
 struct SolverEvalStats {
   1: double avgEvalSpeed;
   2: i32 numEvals;
@@ -211,6 +222,8 @@ struct SolverEvalStats {
   // move types consult the filter per candidate, but some filter while building
   // candidate lists, so this can exceed the evals the filter actually saved.
   11: i64 numPrunedEvals;
+  // All evaluations in this stage/solve, unlike the last-round final summary.
+  12: optional EvalReasonBreakdown evalReasonBreakdown;
 }
 
 // Inference stats for a learned move-filter (rebalancer-net) run that attached.

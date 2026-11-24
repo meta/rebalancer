@@ -283,7 +283,8 @@ bool CoreLocalSearchSolve::finalizeAndReturn(bool solved) {
   evalStats_ = solverEvalSummary_.getSolverEvalStats(
       /*evalDuration=*/evalTimer_.getSeconds(),
       /*timeToFindWorstContainers=*/findTime,
-      solveState_.cyclesStarted);
+      solveState_.cyclesStarted,
+      problem_.configs.moveStatsSpec.evalReasonBreakdownSpec().to_optional());
 
   auto stopMessage = getStopLog(solveParams_.stopEventName);
   REBALANCER_LOG_SOLVER_OUTPUT(INFO, stopMessage);

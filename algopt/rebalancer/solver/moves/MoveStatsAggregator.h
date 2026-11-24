@@ -20,6 +20,7 @@
 #include "algopt/rebalancer/solver/utils/Util.h"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -53,6 +54,7 @@ class MoveStats {
   const PackerMap<LabeledExpressionPtr, int64_t>& getInvalidMoveReasons() const;
   const PackerMap<LabeledExpressionPtr, int64_t>& getBetterMoveReasons() const;
   const PackerMap<LabeledExpressionPtr, int64_t>& getWorseMoveReasons() const;
+  std::map<std::string, int64_t> getReasonCountsByName(Type type) const;
 
   void
   bump(Type type, const LabeledExpressionPtr& expression, size_t moveSize = 1);

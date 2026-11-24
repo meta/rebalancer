@@ -200,7 +200,10 @@ bool LocalSearchStageSolver::solve(Problem& p, Profile /* unused */) {
         .endReason = *stagesSummaries.back().endReason(),
         .auxInfo = *stagesSummaries.back().auxEndInfo(),
         .evalStats = solverEvalSummary_.getSolverEvalStats(
-            totalEvalTime_, totalFindTime_, totalCycles),
+            totalEvalTime_,
+            totalFindTime_,
+            totalCycles,
+            p.configs.moveStatsSpec.evalReasonBreakdownSpec().to_optional()),
         .moveStats = CoreLocalSearchSolve::getMovesHistogram(
             moveTimes_,
             timer_.getSeconds(),
