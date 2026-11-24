@@ -2,10 +2,10 @@
 
 import {useCallback, useState} from 'react';
 
-import PushPin from '@mui/icons-material/PushPin';
-import PushPinOutlined from '@mui/icons-material/PushPinOutlined';
-import {IconButton} from '@mui/material';
+import {IconButton, Tooltip} from '@mui/material';
+import {Pin, PinOff} from 'lucide-react';
 import type {ColumnPinningState, Table, Updater} from '@tanstack/react-table';
+import {ICON_MUTED} from '@/lib/ui-tokens';
 
 // Tracks which columns are pinned (kept fixed on the left while the other
 // columns scroll sideways). Pass the result into the table.
@@ -65,10 +65,6 @@ export function getPinnedColumnHelpers<T>(
   return {stickyStyle, isLastPinned};
 }
 
-// Shadow on the right of the pinned columns, separating them from the ones that
-// scroll underneath.
-export const PINNED_SHADOW = '4px 0 8px -2px rgba(0,0,0,0.15)';
-
 export function ColumnPinButton({
   pinned,
   onToggle,
@@ -79,24 +75,22 @@ export function ColumnPinButton({
   label: string;
 }) {
   return (
-    <IconButton
-      size="small"
-      onClick={e => {
-        e.stopPropagation();
-        onToggle();
-      }}
-      sx={{
-        p: 0.25,
-        flexShrink: 0,
-        opacity: pinned ? 1 : 0.3,
-        '&:hover': {opacity: 1},
-      }}
-      aria-label={label}>
-      {pinned ? (
-        <PushPin sx={{fontSize: 16}} />
-      ) : (
-        <PushPinOutlined sx={{fontSize: 16}} />
-      )}
-    </IconButton>
+    <Tooltip title={label}>
+      <IconButton
+        size="small"
+        className={pinned ? 'col-action on' : 'col-action'}
+        onClick={e => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        sx={{
+          p: 0.25,
+          flexShrink: 0,
+          color: pinned ? 'primary.main' : ICON_MUTED,
+        }}
+        aria-label={label}>
+        {pinned ? <PinOff size={14} /> : <Pin size={14} />}
+      </IconButton>
+    </Tooltip>
   );
 }

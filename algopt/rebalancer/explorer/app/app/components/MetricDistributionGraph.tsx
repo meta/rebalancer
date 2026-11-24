@@ -2,7 +2,9 @@
 
 import {useCallback, useEffect, useState} from 'react';
 
-import {Alert, CircularProgress, Typography} from '@mui/material';
+import {Typography} from '@mui/material';
+
+import {ErrorState, LoadingState} from '@/app/components/ui/StateViews';
 import {
   CartesianGrid,
   Legend,
@@ -15,21 +17,23 @@ import {
 } from 'recharts';
 
 import {useRebalancerHandle} from '@/lib/contexts/RebalancerHandleContext';
+import ChartLegend from '@/app/components/ui/ChartLegend';
+import {
+  CHART_AXIS_LABEL_STYLE,
+  CHART_AXIS_STROKE,
+  CHART_GRID_DASH,
+  CHART_GRID_STROKE,
+  CHART_LINE_WIDTH,
+  CHART_TOOLTIP_ITEM_STYLE,
+  CHART_TOOLTIP_LABEL_STYLE,
+  CHART_PALETTE,
+  CHART_TICK_STYLE,
+  CHART_TOOLTIP_STYLE,
+} from '@/lib/ui-tokens';
 import {fetchMetricDistribution} from '@/lib/rebalancer-explorer-api';
 import type {MetricDistributionResponse} from '@/lib/rebalancer-explorer-types';
 
 const MAX_POINTS = 1000;
-
-const COLORS = [
-  '#1976d2',
-  '#d32f2f',
-  '#388e3c',
-  '#f57c00',
-  '#7b1fa2',
-  '#0097a7',
-  '#c2185b',
-  '#455a64',
-];
 
 interface MetricDistributionGraphProps {
   entityName: string;
@@ -117,15 +121,11 @@ export default function MetricDistributionGraph({
   }, [fetchDistributions]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <CircularProgress size={32} />
-      </div>
-    );
+    return <LoadingState compact label="Loading distribution..." />;
   }
 
   if (error != null) {
-    return <Alert severity="error">{error}</Alert>;
+    return <ErrorState>{error}</ErrorState>;
   }
 
   if (chartData.length === 0) {
@@ -134,41 +134,63 @@ export default function MetricDistributionGraph({
 
   return (
     <>
-      <Typography variant="subtitle2" align="center" gutterBottom>
+      <Typography variant="subtitle2" component="h4" sx={{mb: 1}}>
         Distribution of {entityName}
       </Typography>
       <ResponsiveContainer width="100%" height={400}>
-        <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" />
+        <LineChart
+          data={chartData}
+          margin={{top: 8, right: 16, bottom: 24, left: 8}}>
+          <CartesianGrid
+            vertical={false}
+            strokeDasharray={CHART_GRID_DASH}
+            stroke={CHART_GRID_STROKE}
+          />
           <XAxis
             dataKey="index"
             type="number"
             domain={['dataMin', 'dataMax']}
+            tick={CHART_TICK_STYLE}
+            tickLine={false}
+            axisLine={{stroke: CHART_AXIS_STROKE}}
+            label={{
+              value: `Rank (${entityName} sorted by value)`,
+              position: 'insideBottom',
+              offset: -12,
+              style: CHART_AXIS_LABEL_STYLE,
+            }}
           />
           <YAxis
             label={{
-              value: 'Metric Value',
+              value: loadedMetrics.length === 1 ? loadedMetrics[0] : 'Value',
               angle: -90,
               position: 'insideLeft',
+              style: CHART_AXIS_LABEL_STYLE,
             }}
             domain={['auto', 'auto']}
+            tick={CHART_TICK_STYLE}
+            tickLine={false}
+            axisLine={false}
             tickFormatter={(v: number) =>
               Number.isInteger(v) ? String(v) : v.toFixed(2)
             }
           />
           <Tooltip
+            contentStyle={CHART_TOOLTIP_STYLE}
+            labelStyle={CHART_TOOLTIP_LABEL_STYLE}
+            itemStyle={CHART_TOOLTIP_ITEM_STYLE}
             formatter={(value: number | string) => Number(value).toFixed(2)}
-            labelFormatter={(label: number) => `Index: ${label}`}
+            labelFormatter={(label: number) => `Rank ${label}`}
           />
-          <Legend />
+          <Legend verticalAlign="bottom" align="left" content={ChartLegend} />
           {loadedMetrics.map((metric, i) => (
             <Line
               key={metric}
               type="monotone"
               dataKey={metric}
-              stroke={COLORS[i % COLORS.length]}
+              stroke={CHART_PALETTE[i % CHART_PALETTE.length]}
               dot={false}
-              strokeWidth={2}
+              strokeWidth={CHART_LINE_WIDTH}
             />
           ))}
         </LineChart>

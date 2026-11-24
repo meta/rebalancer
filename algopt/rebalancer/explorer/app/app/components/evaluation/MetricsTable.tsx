@@ -3,15 +3,9 @@
 import type {Dispatch, SetStateAction} from 'react';
 import {useCallback, useMemo} from 'react';
 
-import ArrowDownward from '@mui/icons-material/ArrowDownward';
-import ArrowUpward from '@mui/icons-material/ArrowUpward';
-import HelpOutline from '@mui/icons-material/HelpOutline';
 import {
-  Alert,
   Autocomplete,
   Box,
-  Chip,
-  CircularProgress,
   IconButton,
   Paper,
   TablePagination,
@@ -29,7 +23,6 @@ import {
 import {
   ColumnPinButton,
   getPinnedColumnHelpers,
-  PINNED_SHADOW,
   useColumnPinning,
 } from '@/app/components/columnPinning';
 import {
@@ -39,7 +32,20 @@ import {
 
 import {metricsFaqUrl} from '@platform/internal-links';
 
+import {CircleHelp} from 'lucide-react';
+
+import EntityLink from '@/app/components/detail-pane/EntityLink';
 import EntityFilter from '@/app/components/EntityFilter';
+import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
+import HeaderLabel from '@/app/components/table/HeaderLabel';
+import EmptyColumnsToggle from '@/app/components/table/EmptyColumnsToggle';
+import TableShell from '@/app/components/table/TableShell';
+import {useEmptyColumns} from '@/app/components/table/useEmptyColumns';
+import {ELLIPSIS_SX} from '@/app/components/table/tableSx';
+import TablePaginationActions from '@/app/components/TablePaginationActions';
+import FilterChips from '@/app/components/ui/FilterChips';
+import {COLOR, TEXT} from '@/lib/ui-tokens';
+import Pill from '@/app/components/ui/Pill';
 import GroupBySelector from '@/app/components/GroupBySelector';
 import ShowColumnsSelector from '@/app/components/ShowColumnsSelector';
 import useCopyOnClick from '@/app/components/useCopyOnClick';
@@ -57,15 +63,20 @@ import {
 } from '@/app/components/evaluation/MoveSetsTable.cells';
 import CopyCellAffordance from '@/app/components/CopyCellAffordance';
 import UpdatingOverlay from '@/app/components/UpdatingOverlay';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+} from '@/app/components/ui/StateViews';
 import PreciseNumber from '@/app/components/evaluation/PreciseNumber';
 import {useMetricsData} from '@/app/components/evaluation/useMetricsData';
 import {
   AUTOCOMPLETE_WORD_BREAK_PROPS,
+  formatCount,
   isNumericColumn,
-  toTitleCase,
 } from '@/lib/format';
 import type {CellData, Filter} from '@/lib/rebalancer-explorer-types';
-import {OrderDirection} from '@/lib/rebalancer-explorer-types';
+import {ColumnType, OrderDirection} from '@/lib/rebalancer-explorer-types';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -93,7 +104,7 @@ export default function MetricsTable({
   metricCollectionNames,
   onMetricNameChange,
 }: MetricsTableProps) {
-  const {copyOnClick, snackbar} = useCopyOnClick();
+  const {copyOnClick, copyOnKeyDown, snackbar} = useCopyOnClick();
 
   const {offset, pageSize, orderBy, filters, groupBy, showColumns} = viewState;
 
@@ -119,8 +130,46 @@ export default function MetricsTable({
     [allColumns, groupBy, showColumns],
   );
 
+  // Object, container and scope values open their row in the side pane;
+  // partitions have no entity page and stay plain text.
+  const {metadata} = useProblemMetadata();
+  const linkEntities = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(columnTypeaheadEntities ?? {}).filter(
+          ([, entity]) => !(metadata?.partitionNames ?? []).includes(entity),
+        ),
+      ),
+    [columnTypeaheadEntities, metadata],
+  );
+
+  // The identifier columns start pinned to the left.
+  const defaultPinnedIds = useMemo(
+    () =>
+      visibleColumnIndices
+        .filter(i => allColumns[i]?.primaryKey)
+        .map(i => String(i)),
+    [visibleColumnIndices, allColumns],
+  );
+  const {columnPinning, setColumnPinning, togglePin} =
+    useColumnPinning(defaultPinnedIds);
+  const pinnedIds = columnPinning.left;
+
+  // Columns empty on this page (e.g. all `N/A`) are hidden until asked for,
+  // except names, group-by, sort and pinned columns.
+  const isProtectedColumn = useCallback(
+    (index: number) =>
+      allColumns[index]?.type === ColumnType.ENTITY_NAME ||
+      groupBy.includes(allColumns[index]?.name ?? '') ||
+      allColumns[index]?.name === orderBy?.column ||
+      (pinnedIds ?? []).includes(String(index)),
+    [allColumns, groupBy, orderBy?.column, pinnedIds],
+  );
+  const {renderedIndices, emptyCount, showEmpty, setShowEmpty} =
+    useEmptyColumns(result?.rows, visibleColumnIndices, isProtectedColumn);
+
   const columns = useMemo(() => {
-    return visibleColumnIndices.map(colIndex => {
+    return renderedIndices.map(colIndex => {
       const col = allColumns[colIndex];
       const isBMinusA = col.name.endsWith(B_MINUS_A_SUFFIX);
       const isNumeric = isNumericColumn(col.type);
@@ -130,15 +179,7 @@ export default function MetricsTable({
         cell: info => {
           const value = extractCellValue(info.getValue(), col);
           if (value === NAN_STRING) {
-            return (
-              <Chip
-                label="NaN"
-                size="small"
-                color="error"
-                variant="filled"
-                sx={{fontVariantNumeric: 'tabular-nums', fontSize: '0.8125rem'}}
-              />
-            );
+            return <Pill tone="bad">NaN</Pill>;
           }
           if (isBMinusA && typeof value === 'number') {
             return (
@@ -146,18 +187,19 @@ export default function MetricsTable({
                 value={value}
                 highlight={true}
                 positiveIsBad={true}
+                signed
                 fixedDecimals={Number.isInteger(value) ? 0 : 4}
               />
             );
           }
+          const linkEntity = linkEntities[col.name];
+          if (linkEntity != null && typeof value === 'string') {
+            return <EntityLink entity={linkEntity} id={value} />;
+          }
           return (
-            <span
-              style={{
-                fontVariantNumeric: 'tabular-nums',
-                fontSize: '0.8125rem',
-              }}>
+            <Box component="span" data-overflow sx={ELLIPSIS_SX}>
               {formatCellValue(value)}
-            </span>
+            </Box>
           );
         },
         size: getColumnWidth(col),
@@ -168,7 +210,7 @@ export default function MetricsTable({
         },
       });
     });
-  }, [visibleColumnIndices, allColumns]);
+  }, [renderedIndices, allColumns, linkEntities]);
 
   // ---- Rows ----
   const data = useMemo<RowData[]>(() => {
@@ -181,17 +223,6 @@ export default function MetricsTable({
       return rowObj;
     });
   }, [result, allColumns]);
-
-  // The identifier columns start pinned to the left.
-  const defaultPinnedIds = useMemo(
-    () =>
-      visibleColumnIndices
-        .filter(i => allColumns[i]?.primaryKey)
-        .map(i => String(i)),
-    [visibleColumnIndices, allColumns],
-  );
-  const {columnPinning, setColumnPinning, togglePin} =
-    useColumnPinning(defaultPinnedIds);
 
   const table = useReactTable({
     data,
@@ -290,13 +321,14 @@ export default function MetricsTable({
         sx={{
           display: 'flex',
           alignItems: 'center',
+          flexWrap: 'wrap',
           gap: 1,
           px: 2,
           py: 1,
           borderBottom: 1,
           borderBottomColor: 'divider',
         }}>
-        <Typography variant="h6" sx={{fontWeight: 600}}>
+        <Typography variant="h6" component="h2">
           Metrics
         </Typography>
         {(() => {
@@ -310,25 +342,31 @@ export default function MetricsTable({
                 rel="noopener noreferrer"
                 size="small"
                 aria-label="Click to learn more about Metrics">
-                <HelpOutline fontSize="small" />
+                <CircleHelp size={16} />
               </IconButton>
             </Tooltip>
           );
         })()}
         {result != null && (
-          <Typography variant="body2" color="text.secondary">
-            ({totalCount} rows)
-          </Typography>
+          <Box
+            component="span"
+            sx={{color: COLOR.textTertiary, fontSize: TEXT.xs}}>
+            {`${formatCount(totalCount)} ${totalCount === 1 ? 'row' : 'rows'}`}
+          </Box>
         )}
+        <EmptyColumnsToggle
+          count={emptyCount}
+          shown={showEmpty}
+          onToggle={() => setShowEmpty(v => !v)}
+        />
       </Box>
 
       {/* Metric collection picker */}
-      <Box sx={{px: 2, py: 2, borderBottom: 1, borderBottomColor: 'divider'}}>
+      <Box sx={{px: 2, pt: 2, pb: 1}}>
         <Autocomplete
           options={metricCollectionNames}
           value={metricCollectionNames.includes(metricName) ? metricName : null}
           onChange={onMetricNameChange}
-          getOptionLabel={toTitleCase}
           isOptionEqualToValue={(option, value) => option === value}
           renderInput={inputParams => (
             <TextField
@@ -337,8 +375,9 @@ export default function MetricsTable({
               placeholder="Select a metric collection"
             />
           )}
+          size="small"
           fullWidth
-          sx={{maxWidth: 520}}
+          sx={{maxWidth: 420}}
           slotProps={AUTOCOMPLETE_WORD_BREAK_PROPS}
         />
       </Box>
@@ -353,6 +392,9 @@ export default function MetricsTable({
             entityName={metricName}
             columnTypeaheadEntities={columnTypeaheadEntities}
           />
+          <Box sx={{mt: 1}}>
+            <FilterChips filters={filters} onChange={handleFiltersChange} />
+          </Box>
         </Box>
       )}
 
@@ -364,9 +406,8 @@ export default function MetricsTable({
             py: 1,
             display: 'flex',
             flexWrap: 'wrap',
-            gap: 2,
+            gap: 1.5,
             alignItems: 'flex-start',
-            justifyContent: 'space-between',
           }}>
           <GroupBySelector
             columnDescriptions={filterColumns}
@@ -384,100 +425,71 @@ export default function MetricsTable({
 
       {/* Error */}
       {error != null && (
-        <Box sx={{px: 2, py: 1}}>
-          <Alert severity="error" onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        </Box>
+        <ErrorState sx={{m: 2}} onClose={() => setError(null)}>
+          {error}
+        </ErrorState>
       )}
 
       {/* Initial loading (no data yet) */}
-      {result == null && loading && (
-        <Box
-          role="status"
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            py: 4,
-          }}>
-          <CircularProgress size={40} />
-          <Box sx={{ml: 2, color: 'text.secondary'}}>Loading metrics...</Box>
-        </Box>
-      )}
+      {result == null && loading && <LoadingState label="Loading metrics..." />}
 
       {/* Refetch overlay, anchored to the Paper so the badge stays in view. */}
       {result != null && loading && <UpdatingOverlay />}
 
       {/* Table */}
       {result != null && (
-        <Box sx={{overflow: 'auto'}}>
-          <table
-            style={{
-              width: table.getTotalSize(),
-              minWidth: '100%',
-              tableLayout: 'fixed',
-              borderCollapse: 'separate',
-              borderSpacing: 0,
-            }}>
-            <thead>
-              {headerGroups.map(headerGroup => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map(header => {
-                    const meta = header.column.columnDef.meta as
-                      | {
-                          numeric?: boolean;
-                          colName?: string;
-                          primaryKey?: boolean;
-                        }
-                      | undefined;
-                    const isSorted = orderBy?.column === meta?.colName;
-                    const isAsc =
-                      isSorted &&
-                      orderBy?.direction === OrderDirection.ASCENDING;
-                    const isPinned = pinnedLeft.includes(header.column.id);
-                    return (
+        <TableShell
+          fixedLayout
+          minWidth={0}
+          label="Metrics"
+          tableSx={{width: table.getTotalSize(), minWidth: '100%'}}>
+          <thead>
+            {headerGroups.map(headerGroup => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map(header => {
+                  const meta = header.column.columnDef.meta as
+                    | {
+                        numeric?: boolean;
+                        colName?: string;
+                        primaryKey?: boolean;
+                      }
+                    | undefined;
+                  const isSorted = orderBy?.column === meta?.colName;
+                  const isAsc =
+                    isSorted && orderBy?.direction === OrderDirection.ASCENDING;
+                  const isPinned = pinnedLeft.includes(header.column.id);
+                  return (
+                    <th
+                      key={header.id}
+                      className={[
+                        'sortable',
+                        meta?.numeric ? 'num' : '',
+                        isLastPinned(header.column.id) ? 'last-pinned' : '',
+                      ].join(' ')}
+                      onClick={() => handleSort(header.column.id)}
+                      style={{
+                        ...stickyStyle(header.column.id, 3),
+                        width: header.getSize(),
+                      }}>
                       <Box
-                        component="th"
-                        key={header.id}
-                        onClick={() => handleSort(header.column.id)}
                         sx={{
-                          position: 'relative',
-                          ...stickyStyle(header.column.id, 3),
-                          width: header.getSize(),
-                          textAlign: meta?.numeric ? 'right' : 'left',
-                          padding: '8px 12px',
-                          borderBottom: 1,
-                          borderBottomColor: 'divider',
-                          fontWeight: meta?.primaryKey ? 600 : 500,
-                          fontSize: '0.875rem',
-                          color: 'text.secondary',
-                          backgroundColor: 'background.paper',
-                          cursor: 'pointer',
-                          userSelect: 'none',
-                          boxShadow: isLastPinned(header.column.id)
-                            ? PINNED_SHADOW
-                            : undefined,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: meta?.numeric
+                            ? 'flex-end'
+                            : 'flex-start',
+                          gap: 0.5,
+                          color: meta?.primaryKey ? 'text.primary' : undefined,
                         }}>
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: meta?.numeric
-                              ? 'flex-end'
-                              : 'flex-start',
-                            gap: 0.5,
-                          }}>
-                          {flexRender(
+                        <HeaderLabel
+                          label={flexRender(
                             header.column.columnDef.header,
                             header.getContext(),
                           )}
-                          {isSorted &&
-                            (isAsc ? (
-                              <ArrowUpward sx={{fontSize: 16}} />
-                            ) : (
-                              <ArrowDownward sx={{fontSize: 16}} />
-                            ))}
+                          sorted={isSorted ? (isAsc ? 'asc' : 'desc') : false}
+                          align={meta?.numeric ? 'right' : 'left'}
+                        />
+                        <Box className="col-actions">
                           <ColumnPinButton
                             pinned={isPinned}
                             onToggle={() => togglePin(header.column.id)}
@@ -506,105 +518,68 @@ export default function MetricsTable({
                               />
                             )}
                         </Box>
-                        {header.column.getCanResize() && (
-                          <Box
-                            component="div"
-                            onMouseDown={header.getResizeHandler()}
-                            onTouchStart={header.getResizeHandler()}
-                            onClick={e => e.stopPropagation()}
-                            sx={{
-                              position: 'absolute',
-                              right: 0,
-                              top: 0,
-                              height: '100%',
-                              width: '4px',
-                              cursor: 'col-resize',
-                              userSelect: 'none',
-                              touchAction: 'none',
-                              bgcolor: header.column.getIsResizing()
-                                ? 'primary.main'
-                                : 'transparent',
-                              '&:hover': {bgcolor: 'action.disabled'},
-                            }}
-                          />
-                        )}
                       </Box>
-                    );
-                  })}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {rows.map(row => (
-                <Box
-                  component="tr"
-                  key={row.id}
-                  sx={{
-                    backgroundColor: 'background.paper',
-                    '&:hover': {backgroundColor: 'action.hover'},
-                  }}>
-                  {row.getVisibleCells().map(cell => {
-                    const meta = cell.column.columnDef.meta as
-                      {numeric?: boolean} | undefined;
-                    const isPinned = pinnedLeft.includes(cell.column.id);
-                    return (
-                      <Box
-                        component="td"
-                        key={cell.id}
-                        className="group"
-                        onClick={copyOnClick}
-                        sx={{
-                          position: 'relative',
-                          ...stickyStyle(cell.column.id, 2),
-                          width: cell.column.getSize(),
-                          textAlign: meta?.numeric ? 'right' : 'left',
-                          py: '8px',
-                          pl: '12px',
-                          // Extra right room for the copy icon.
-                          pr: '24px',
-                          borderBottom: 1,
-                          borderBottomColor: 'divider',
-                          backgroundColor: isPinned ? 'inherit' : undefined,
-                          fontSize: '0.875rem',
-                          whiteSpace: 'normal',
-                          wordBreak: 'break-word',
-                          overflowWrap: 'anywhere',
-                          cursor: 'pointer',
-                          boxShadow: isLastPinned(cell.column.id)
-                            ? PINNED_SHADOW
-                            : undefined,
-                        }}>
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                        <CopyCellAffordance />
-                      </Box>
-                    );
-                  })}
-                </Box>
-              ))}
-              {rows.length === 0 && !loading && (
-                <tr>
-                  <td
-                    colSpan={visibleColumnIndices.length || 1}
-                    style={{
-                      textAlign: 'center',
-                      padding: '24px 12px',
-                      fontSize: '0.875rem',
-                    }}>
-                    <Typography
-                      component="span"
-                      variant="body2"
-                      color="text.secondary">
-                      No data
-                    </Typography>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </Box>
+                      {header.column.getCanResize() && (
+                        <div
+                          className={
+                            header.column.getIsResizing()
+                              ? 'resize-handle active'
+                              : 'resize-handle'
+                          }
+                          onMouseDown={header.getResizeHandler()}
+                          onTouchStart={header.getResizeHandler()}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      )}
+                    </th>
+                  );
+                })}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {rows.map(row => (
+              <tr key={row.id}>
+                {row.getVisibleCells().map(cell => {
+                  const meta = cell.column.columnDef.meta as
+                    {numeric?: boolean; primaryKey?: boolean} | undefined;
+                  const isPinned = pinnedLeft.includes(cell.column.id);
+                  return (
+                    <td
+                      key={cell.id}
+                      className={[
+                        'group copyable',
+                        meta?.numeric ? 'num' : '',
+                        isPinned ? 'pinned-cell' : '',
+                        isLastPinned(cell.column.id) ? 'last-pinned' : '',
+                      ].join(' ')}
+                      onClick={copyOnClick}
+                      onKeyDown={copyOnKeyDown}
+                      tabIndex={0}
+                      style={{
+                        ...stickyStyle(cell.column.id, 2),
+                        width: cell.column.getSize(),
+                        maxWidth: cell.column.getSize(),
+                      }}>
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
+                      <CopyCellAffordance />
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+            {rows.length === 0 && !loading && (
+              <tr>
+                <td className="empty" colSpan={renderedIndices.length || 1}>
+                  <EmptyState compact title="No data" />
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </TableShell>
       )}
 
       {/* Pagination */}
@@ -617,6 +592,7 @@ export default function MetricsTable({
           rowsPerPage={pageSize}
           onRowsPerPageChange={handleRowsPerPageChange}
           rowsPerPageOptions={PAGE_SIZE_OPTIONS}
+          ActionsComponent={TablePaginationActions}
           sx={{
             borderTop: 1,
             borderTopColor: 'divider',

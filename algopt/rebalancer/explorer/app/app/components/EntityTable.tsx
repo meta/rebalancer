@@ -3,9 +3,8 @@
 import type {Dispatch, SetStateAction} from 'react';
 import {useCallback, useMemo} from 'react';
 
-import ArrowDownward from '@mui/icons-material/ArrowDownward';
-import ArrowUpward from '@mui/icons-material/ArrowUpward';
 import {Box, Paper, TablePagination, Typography} from '@mui/material';
+import {ArrowDown, ArrowUp} from 'lucide-react';
 import {
   createColumnHelper,
   flexRender,
@@ -15,7 +14,6 @@ import {
 import {
   ColumnPinButton,
   getPinnedColumnHelpers,
-  PINNED_SHADOW,
   useColumnPinning,
 } from '@/app/components/columnPinning';
 import {
@@ -25,83 +23,41 @@ import {
 
 import type {CellData, Result} from '@/lib/rebalancer-explorer-types';
 import {ColumnType, OrderDirection} from '@/lib/rebalancer-explorer-types';
-import {isNumericColumn} from '@/lib/format';
-import {
-  CARD_SHADOW,
-  LINE_COLOR,
-  MUTED_TEXT_COLOR,
-  ROW_HOVER_OPAQUE,
-} from '@/lib/ui-tokens';
+import {columnTypeInfo} from '@/lib/column-types';
+import {formatCount, isNumericColumn} from '@/lib/format';
 
 import type {ViewState} from './EntityView';
 import CopyCellAffordance from './CopyCellAffordance';
 import UpdatingOverlay from './UpdatingOverlay';
+import {EmptyState} from './ui/StateViews';
 import useCopyOnClick from './useCopyOnClick';
+import TablePaginationActions from './TablePaginationActions';
+import EntityLink from './detail-pane/EntityLink';
+import EmptyColumnsToggle from './table/EmptyColumnsToggle';
+import TableShell from './table/TableShell';
+import {useEmptyColumns} from './table/useEmptyColumns';
+import {ELLIPSIS_SX} from './table/tableSx';
+import Tag from './ui/Tag';
 
 interface EntityTableProps {
   result: Result | null;
   viewState: ViewState;
   onViewStateChange: Dispatch<SetStateAction<ViewState>>;
   loading: boolean;
+  /** The entity this table lists; its primary-key cells open the side pane. */
+  entityName: string;
+  /** Other columns whose values name an entity with its own page. */
+  linkEntities?: Record<string, string>;
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
-function getColumnTypeLabel(type: ColumnType): {
-  label: string;
-  full: string;
-  color: string;
-} {
-  switch (type) {
-    case ColumnType.DIMENSION:
-      return {label: 'dim', full: 'Dimension', color: '#e3f2fd'};
-    case ColumnType.UTILIZATION:
-      return {label: 'util', full: 'Utilization', color: '#fff3e0'};
-    case ColumnType.ENTITY_NAME:
-      return {label: 'entity', full: 'Entity name', color: '#e8f5e9'};
-    case ColumnType.ASSIGNMENT:
-      return {label: 'assign', full: 'Assignment', color: '#fce4ec'};
-    case ColumnType.PARTITION:
-      return {label: 'part', full: 'Partition', color: '#f3e5f5'};
-    case ColumnType.SCOPE:
-      return {label: 'scope', full: 'Scope', color: '#e0f2f1'};
-    case ColumnType.IDENTIFIER:
-      return {label: 'id', full: 'Identifier', color: '#e8eaf6'};
-    case ColumnType.DOUBLE:
-      return {label: 'double', full: 'Double', color: '#f5f5f5'};
-    case ColumnType.INTEGER:
-      return {label: 'int', full: 'Integer', color: '#f5f5f5'};
-    case ColumnType.STRING:
-      return {label: 'string', full: 'String', color: '#f5f5f5'};
-    default:
-      return {label: '', full: '', color: 'transparent'};
-  }
-}
-
 // Column width sized to the value/type; long header names wrap within it.
 function getColumnWidth(type: ColumnType, isPrimaryKey: boolean): number {
   if (isPrimaryKey) {
-    return 220;
+    return 260;
   }
-  switch (type) {
-    case ColumnType.DOUBLE:
-    case ColumnType.UTILIZATION:
-      return 170;
-    case ColumnType.INTEGER:
-      return 150;
-    case ColumnType.PARTITION:
-    case ColumnType.SCOPE:
-    case ColumnType.ASSIGNMENT:
-      return 160;
-    case ColumnType.DIMENSION:
-      return 180;
-    case ColumnType.ENTITY_NAME:
-    case ColumnType.IDENTIFIER:
-      return 200;
-    case ColumnType.STRING:
-    default:
-      return 180;
-  }
+  return isNumericColumn(type) ? 140 : 180;
 }
 
 function formatCellValue(cell: CellData | undefined): string {
@@ -146,6 +102,8 @@ export default function EntityTable({
   viewState,
   onViewStateChange,
   loading,
+  entityName,
+  linkEntities,
 }: EntityTableProps) {
   const {copyOnClick, copyOnKeyDown, snackbar} = useCopyOnClick();
 
@@ -153,7 +111,7 @@ export default function EntityTable({
   // columns returned by the backend (which change when group-by is active,
   // since non-group-by string columns are dropped and IDENTIFIER becomes
   // Row_Count).
-  const resultColumns = result?.columns ?? [];
+  const resultColumns = useMemo(() => result?.columns ?? [], [result]);
 
   // Determine which columns are visible. When showColumns is non-empty,
   // entity name and group-by columns are always shown alongside the
@@ -173,14 +131,52 @@ export default function EntityTable({
       .map(({i}) => i);
   }, [resultColumns, viewState.showColumns, viewState.groupByColumns]);
 
+  // Column pinning state — primary key columns pinned by default
+  const defaultPinnedIds = useMemo(() => {
+    return resultColumns
+      .map((col, i) => ({col, i}))
+      .filter(({col, i}) => col.primaryKey && visibleColumnIndices.includes(i))
+      .map(({i}) => String(i));
+  }, [resultColumns, visibleColumnIndices]);
+
+  const {columnPinning, setColumnPinning, togglePin} =
+    useColumnPinning(defaultPinnedIds);
+  const pinnedIds = columnPinning.left;
+
+  // Columns empty on this page are hidden until the user asks for them,
+  // except names, group-by, sort and pinned columns.
+  const isProtectedColumn = useCallback(
+    (index: number) =>
+      resultColumns[index]?.type === ColumnType.ENTITY_NAME ||
+      viewState.groupByColumns.includes(resultColumns[index]?.name ?? '') ||
+      resultColumns[index]?.name === viewState.orderColumn ||
+      (pinnedIds ?? []).includes(String(index)),
+    [resultColumns, viewState.groupByColumns, viewState.orderColumn, pinnedIds],
+  );
+  const {renderedIndices, emptyCount, showEmpty, setShowEmpty} =
+    useEmptyColumns(result?.rows, visibleColumnIndices, isProtectedColumn);
+
   // Build TanStack columns from visible column descriptions
   const columns = useMemo(() => {
-    return visibleColumnIndices.map(colIndex => {
+    return renderedIndices.map(colIndex => {
       const col = resultColumns[colIndex];
       return columnHelper.accessor(String(colIndex), {
         id: String(colIndex),
         header: col.name,
-        cell: info => formatCellValue(info.getValue()),
+        cell: info => {
+          const value = formatCellValue(info.getValue());
+          const linkEntity =
+            col.primaryKey && col.type === ColumnType.ENTITY_NAME
+              ? entityName
+              : linkEntities?.[col.name];
+          return linkEntity != null ? (
+            <EntityLink entity={linkEntity} id={value} />
+          ) : (
+            <Box component="span" data-overflow sx={ELLIPSIS_SX}>
+              {value}
+            </Box>
+          );
+        },
         size: getColumnWidth(col.type, col.primaryKey),
         minSize: 80,
         meta: {
@@ -191,7 +187,7 @@ export default function EntityTable({
         },
       });
     });
-  }, [visibleColumnIndices, resultColumns]);
+  }, [renderedIndices, resultColumns, entityName, linkEntities]);
 
   // Build row data
   const data = useMemo<RowData[]>(() => {
@@ -206,17 +202,6 @@ export default function EntityTable({
       return rowObj;
     });
   }, [result, resultColumns]);
-
-  // Column pinning state — primary key columns pinned by default
-  const defaultPinnedIds = useMemo(() => {
-    return resultColumns
-      .map((col, i) => ({col, i}))
-      .filter(({col, i}) => col.primaryKey && visibleColumnIndices.includes(i))
-      .map(({i}) => String(i));
-  }, [resultColumns, visibleColumnIndices]);
-
-  const {columnPinning, setColumnPinning, togglePin} =
-    useColumnPinning(defaultPinnedIds);
 
   const table = useReactTable({
     data,
@@ -301,6 +286,9 @@ export default function EntityTable({
   const headerGroups = table.getHeaderGroups();
   const rows = table.getRowModel().rows;
 
+  const firstRow = totalCount === 0 ? 0 : viewState.offset + 1;
+  const lastRow = Math.min(viewState.offset + viewState.limit, totalCount);
+
   return (
     <Paper
       variant="outlined"
@@ -309,147 +297,151 @@ export default function EntityTable({
         flexDirection: 'column',
         position: 'relative',
         overflow: 'hidden',
-        boxShadow: CARD_SHADOW,
       }}>
       {/* Keeps the old rows visible while refetching */}
       {loading && <UpdatingOverlay />}
 
-      {/* Scroll wide tables sideways; the page handles vertical scrolling. */}
-      <Box sx={{overflowX: 'auto'}}>
-        {data.length === 0 && !loading ? (
-          <Box sx={{display: 'flex', justifyContent: 'center', py: 6}}>
-            <Typography variant="body1" color="text.secondary">
-              No data found
-            </Typography>
-          </Box>
-        ) : (
-          <table
-            style={{
-              width: table.getTotalSize(),
-              minWidth: '100%',
-              tableLayout: 'fixed',
-              borderCollapse: 'separate',
-              borderSpacing: 0,
-            }}>
-            <thead>
-              {headerGroups.map(headerGroup => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map(header => {
-                    const meta = header.column.columnDef.meta as
-                      | {
-                          numeric?: boolean;
-                          primaryKey?: boolean;
-                          colName?: string;
-                          colType?: ColumnType;
-                        }
-                      | undefined;
-                    const isPinned = pinnedLeft.includes(header.column.id);
-                    const isSorted = viewState.orderColumn === meta?.colName;
-                    const isAsc =
-                      isSorted &&
-                      viewState.orderDirection === OrderDirection.ASCENDING;
+      {/* Row range and a compact pager above the table */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          columnGap: 1,
+          rowGap: 0.5,
+          px: 2,
+          py: 0.5,
+          minHeight: 44,
+          borderBottom: 1,
+          borderColor: 'divider',
+        }}>
+        <Typography variant="caption">
+          {`${formatCount(firstRow)}–${formatCount(lastRow)} of ${formatCount(totalCount)}`}
+        </Typography>
+        <EmptyColumnsToggle
+          count={emptyCount}
+          shown={showEmpty}
+          onToggle={() => setShowEmpty(v => !v)}
+        />
+        <Box sx={{ml: 'auto'}}>
+          <TablePaginationActions
+            count={totalCount}
+            page={currentPage}
+            rowsPerPage={viewState.limit}
+            onPageChange={handlePageChange}
+          />
+        </Box>
+      </Box>
 
-                    return (
-                      <th
-                        key={header.id}
-                        style={{
-                          position: 'relative',
-                          ...stickyStyle(header.column.id, 3),
-                          width: header.getSize(),
-                          maxWidth: header.getSize(),
-                          minWidth: header.column.columnDef.minSize,
-                          textAlign: 'center',
-                          padding: '8px 12px',
-                          borderBottom: `1px solid ${LINE_COLOR}`,
-                          fontWeight: meta?.primaryKey ? 600 : 500,
-                          fontSize: '0.875rem',
-                          color: MUTED_TEXT_COLOR,
-                          cursor: 'pointer',
-                          userSelect: 'none',
-                          backgroundColor: 'white',
-                          boxShadow: isLastPinned(header.column.id)
-                            ? PINNED_SHADOW
-                            : undefined,
+      {data.length === 0 && !loading ? (
+        <EmptyState title="No data found" />
+      ) : (
+        <TableShell
+          fixedLayout
+          minWidth={0}
+          tableSx={{width: table.getTotalSize(), minWidth: '100%'}}>
+          <thead>
+            {headerGroups.map(headerGroup => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map(header => {
+                  const meta = header.column.columnDef.meta as
+                    | {
+                        numeric?: boolean;
+                        primaryKey?: boolean;
+                        colName?: string;
+                        colType?: ColumnType;
+                      }
+                    | undefined;
+                  const isPinned = pinnedLeft.includes(header.column.id);
+                  const isSorted = viewState.orderColumn === meta?.colName;
+                  const isAsc =
+                    isSorted &&
+                    viewState.orderDirection === OrderDirection.ASCENDING;
+                  const typeLabel =
+                    meta?.colType != null ? columnTypeInfo(meta.colType) : null;
+
+                  return (
+                    <th
+                      key={header.id}
+                      className={[
+                        meta?.numeric ? 'num' : '',
+                        isLastPinned(header.column.id) ? 'last-pinned' : '',
+                      ].join(' ')}
+                      style={{
+                        ...stickyStyle(header.column.id, 3),
+                        width: header.getSize(),
+                        maxWidth: header.getSize(),
+                        minWidth: header.column.columnDef.minSize,
+                      }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: meta?.numeric
+                            ? 'flex-end'
+                            : 'flex-start',
+                          gap: 0.5,
+                          minWidth: 0,
                         }}>
                         <Box
+                          component="button"
+                          type="button"
+                          onClick={() => handleSort(header.column.id)}
+                          aria-label={`Sort by ${meta?.colName ?? ''}`}
                           sx={{
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
                             gap: 0.5,
-                            overflow: 'hidden',
                             minWidth: 0,
+                            p: 0,
+                            border: 0,
+                            bgcolor: 'transparent',
+                            font: 'inherit',
+                            color: meta?.primaryKey
+                              ? 'text.primary'
+                              : 'inherit',
+                            textAlign: meta?.numeric ? 'right' : 'left',
+                            cursor: 'pointer',
                           }}>
-                          <span
-                            onClick={() => handleSort(header.column.id)}
-                            title={meta?.colName ?? ''}
-                            style={{
+                          <Box
+                            component="span"
+                            sx={{
                               display: 'flex',
-                              alignItems: 'center',
-                              gap: 2,
+                              flexDirection: 'column',
+                              alignItems: meta?.numeric
+                                ? 'flex-end'
+                                : 'flex-start',
                               minWidth: 0,
-                              overflow: 'hidden',
                             }}>
-                            <span
-                              style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                lineHeight: 1.2,
-                                overflow: 'hidden',
-                              }}>
-                              {splitHeaderName(
-                                String(
-                                  flexRender(
-                                    header.column.columnDef.header,
-                                    header.getContext(),
-                                  ),
+                            {splitHeaderName(
+                              String(
+                                flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext(),
                                 ),
-                              ).map((part, i) => (
-                                <span
-                                  key={i}
-                                  style={{
-                                    overflowWrap: 'anywhere',
-                                    wordBreak: 'break-word',
-                                  }}>
-                                  {part}
-                                </span>
-                              ))}
-                              {meta?.colType != null &&
-                                (() => {
-                                  const {label, full, color} =
-                                    getColumnTypeLabel(meta.colType);
-                                  if (!label) return null;
-                                  return (
-                                    <span
-                                      title={full}
-                                      style={{
-                                        fontSize: '0.625rem',
-                                        lineHeight: 1,
-                                        padding: '1px 4px',
-                                        borderRadius: 3,
-                                        backgroundColor: color,
-                                        color: '#666',
-                                        fontWeight: 500,
-                                        whiteSpace: 'nowrap',
-                                        alignSelf: 'center',
-                                        marginTop: 2,
-                                      }}>
-                                      {label}
-                                    </span>
-                                  );
-                                })()}
-                            </span>
-                            {isSorted &&
-                              (isAsc ? (
-                                <ArrowUpward
-                                  sx={{fontSize: 16, flexShrink: 0}}
-                                />
-                              ) : (
-                                <ArrowDownward
-                                  sx={{fontSize: 16, flexShrink: 0}}
-                                />
-                              ))}
-                          </span>
+                              ),
+                            ).map((part, i) => (
+                              <Box
+                                component="span"
+                                key={i}
+                                sx={{overflowWrap: 'anywhere'}}>
+                                {part}
+                              </Box>
+                            ))}
+                            {typeLabel != null && typeLabel.short !== '' && (
+                              <Tag title={typeLabel.full} small sx={{mt: 0.25}}>
+                                {typeLabel.short}
+                              </Tag>
+                            )}
+                          </Box>
+                          {isSorted &&
+                            (isAsc ? (
+                              <ArrowUp size={14} className="shrink-0" />
+                            ) : (
+                              <ArrowDown size={14} className="shrink-0" />
+                            ))}
+                        </Box>
+                        <Box className="col-actions">
                           <ColumnPinButton
                             pinned={isPinned}
                             onToggle={() => togglePin(header.column.id)}
@@ -478,105 +470,62 @@ export default function EntityTable({
                               />
                             )}
                         </Box>
-                        {/* Resize handle */}
-                        <div
-                          onMouseDown={header.getResizeHandler()}
-                          onTouchStart={header.getResizeHandler()}
-                          onClick={e => e.stopPropagation()}
-                          style={{
-                            position: 'absolute',
-                            right: 0,
-                            top: 0,
-                            height: '100%',
-                            width: 4,
-                            cursor: 'col-resize',
-                            backgroundColor: header.column.getIsResizing()
-                              ? '#1976d2'
-                              : 'transparent',
-                          }}
-                          onMouseEnter={e => {
-                            if (!header.column.getIsResizing()) {
-                              e.currentTarget.style.backgroundColor = '#bdbdbd';
-                            }
-                          }}
-                          onMouseLeave={e => {
-                            if (!header.column.getIsResizing()) {
-                              e.currentTarget.style.backgroundColor =
-                                'transparent';
-                            }
-                          }}
-                        />
-                      </th>
-                    );
-                  })}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {rows.map(row => (
-                <tr
-                  key={row.id}
-                  style={{
-                    backgroundColor: 'white',
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.backgroundColor = ROW_HOVER_OPAQUE;
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.backgroundColor = 'white';
-                  }}>
-                  {row.getVisibleCells().map(cell => {
-                    const meta = cell.column.columnDef.meta as
-                      {numeric?: boolean; primaryKey?: boolean} | undefined;
-                    const isPinned = pinnedLeft.includes(cell.column.id);
+                      </Box>
+                      <div
+                        className={
+                          header.column.getIsResizing()
+                            ? 'resize-handle active'
+                            : 'resize-handle'
+                        }
+                        onMouseDown={header.getResizeHandler()}
+                        onTouchStart={header.getResizeHandler()}
+                        onClick={e => e.stopPropagation()}
+                      />
+                    </th>
+                  );
+                })}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {rows.map(row => (
+              <tr key={row.id}>
+                {row.getVisibleCells().map(cell => {
+                  const meta = cell.column.columnDef.meta as
+                    {numeric?: boolean; primaryKey?: boolean} | undefined;
+                  const isPinned = pinnedLeft.includes(cell.column.id);
 
-                    return (
-                      <td
-                        key={cell.id}
-                        className="group"
-                        onClick={copyOnClick}
-                        onKeyDown={copyOnKeyDown}
-                        tabIndex={0}
-                        style={{
-                          position: 'relative',
-                          ...stickyStyle(cell.column.id, 2),
-                          width: cell.column.getSize(),
-                          maxWidth: cell.column.getSize(),
-                          textAlign: meta?.numeric ? 'center' : 'left',
-                          paddingTop: 8,
-                          paddingBottom: 8,
-                          paddingLeft: 12,
-                          // Extra right room for the copy icon.
-                          paddingRight: 24,
-                          borderBottom: `1px solid ${LINE_COLOR}`,
-                          fontWeight: meta?.primaryKey ? 600 : 400,
-                          fontSize: '0.875rem',
-                          fontVariantNumeric: meta?.numeric
-                            ? 'tabular-nums'
-                            : undefined,
-                          whiteSpace: 'normal',
-                          wordBreak: 'break-word',
-                          overflowWrap: 'anywhere',
-                          cursor: 'pointer',
-                          backgroundColor: isPinned ? 'inherit' : undefined,
-                          boxShadow: isLastPinned(cell.column.id)
-                            ? PINNED_SHADOW
-                            : undefined,
-                        }}>
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                        <CopyCellAffordance />
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Box>
+                  return (
+                    <td
+                      key={cell.id}
+                      className={[
+                        'group copyable',
+                        meta?.numeric ? 'num' : '',
+                        meta?.primaryKey ? 'primary' : '',
+                        isPinned ? 'pinned-cell' : '',
+                        isLastPinned(cell.column.id) ? 'last-pinned' : '',
+                      ].join(' ')}
+                      onClick={copyOnClick}
+                      onKeyDown={copyOnKeyDown}
+                      tabIndex={0}
+                      style={{
+                        ...stickyStyle(cell.column.id, 2),
+                        width: cell.column.getSize(),
+                        maxWidth: cell.column.getSize(),
+                      }}>
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
+                      <CopyCellAffordance />
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </TableShell>
+      )}
 
       {/* Pagination */}
       <TablePagination
@@ -587,6 +536,7 @@ export default function EntityTable({
         rowsPerPage={viewState.limit}
         onRowsPerPageChange={handleRowsPerPageChange}
         rowsPerPageOptions={PAGE_SIZE_OPTIONS}
+        ActionsComponent={TablePaginationActions}
         sx={{
           borderTop: 1,
           borderTopColor: 'divider',

@@ -2,9 +2,13 @@
 
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 
-import {Alert, Skeleton} from '@mui/material';
+import {Box, Paper, Skeleton} from '@mui/material';
 import {useSearchParams} from 'next/navigation';
 
+import PageHead, {PageContainer} from '@/app/components/shell/PageHead';
+import FilterChips from '@/app/components/ui/FilterChips';
+import Tag from '@/app/components/ui/Tag';
+import {EmptyState, ErrorState} from '@/app/components/ui/StateViews';
 import {
   asArray,
   normalizeFilters,
@@ -16,7 +20,7 @@ import {
 
 import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
 import {useRebalancerHandle} from '@/lib/contexts/RebalancerHandleContext';
-import {isTypeaheadColumn} from '@/lib/format';
+import {formatCount, isTypeaheadColumn} from '@/lib/format';
 import {fetchEntityData} from '@/lib/rebalancer-explorer-api';
 import type {
   ColumnDescription,
@@ -165,6 +169,18 @@ export default function EntityView({entityName}: EntityViewProps) {
     return entities;
   }, [metadata, columnDescriptions]);
 
+  // Partitions have no entity page, so their values are not linked.
+  const linkEntities = useMemo(() => {
+    if (columnTypeaheadEntities == null || metadata == null) {
+      return undefined;
+    }
+    return Object.fromEntries(
+      Object.entries(columnTypeaheadEntities).filter(
+        ([, entity]) => !metadata.partitionNames.includes(entity),
+      ),
+    );
+  }, [columnTypeaheadEntities, metadata]);
+
   // Debounced fetch: fetch entity data on mount, entity change, or viewState change
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fetchData = useCallback(async () => {
@@ -253,7 +269,7 @@ export default function EntityView({entityName}: EntityViewProps) {
   if (handleError != null) {
     return (
       <div className="p-4">
-        <Alert severity="error">{handleError}</Alert>
+        <ErrorState>{handleError}</ErrorState>
       </div>
     );
   }
@@ -261,55 +277,97 @@ export default function EntityView({entityName}: EntityViewProps) {
   if (handle == null) {
     return (
       <div className="p-4">
-        <Alert severity="warning">No handle available</Alert>
+        <EmptyState title="No handle available" />
       </div>
     );
   }
 
+  // Which kind of entity this page lists, from metadata names only.
+  const kind =
+    metadata == null
+      ? null
+      : entityName === metadata.objectName
+        ? 'object'
+        : entityName === metadata.containerName
+          ? 'container'
+          : metadata.scopeNames.includes(entityName)
+            ? 'scope'
+            : metadata.dynamicDimensionNames.includes(entityName)
+              ? 'dynamic dimension'
+              : null;
+  const isGrouped = viewState.groupByColumns.length > 0;
+
   return (
-    <div className="p-4 space-y-4">
+    <PageContainer>
+      <PageHead
+        title={entityName}
+        sub={
+          <Box
+            component="span"
+            sx={{display: 'inline-flex', alignItems: 'center', gap: 1}}>
+            {kind != null && <Tag>{kind}</Tag>}
+            {result != null &&
+              `${formatCount(result.totalCount)} ${isGrouped ? 'group' : 'row'}${result.totalCount === 1 ? '' : 's'}`}
+          </Box>
+        }
+      />
       {dataError != null && (
-        <Alert severity="error" onClose={() => setDataError(null)}>
-          {dataError}
-        </Alert>
+        <ErrorState onClose={() => setDataError(null)}>{dataError}</ErrorState>
       )}
 
-      {columnDescriptions != null && columnDescriptions.length > 0 && (
-        <EntityFilter
-          columnDescriptions={columnDescriptions}
-          filters={viewState.filters}
-          onFiltersChange={filters =>
-            setViewState(prev => ({...prev, filters, offset: 0}))
-          }
-          entityName={entityName}
-          columnTypeaheadEntities={columnTypeaheadEntities}
-        />
-      )}
-
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <GroupBySelector
-          columnDescriptions={columnDescriptions ?? []}
-          groupByColumns={viewState.groupByColumns}
-          onGroupByChange={groupByColumns =>
-            setViewState(prev => ({
-              ...prev,
-              groupByColumns,
-              offset: 0,
-              orderColumn: groupByColumns.length > 0 ? groupByColumns[0] : null,
-              orderDirection: OrderDirection.ASCENDING,
-            }))
-          }
-        />
-
-        <ShowColumnsSelector
-          columnDescriptions={columnDescriptions ?? []}
-          groupByColumns={viewState.groupByColumns}
-          showColumns={viewState.showColumns}
-          onShowColumnsChange={showColumns =>
-            setViewState(prev => ({...prev, showColumns}))
-          }
-        />
-      </div>
+      {/* Filter, group and columns: the page's toolbar. */}
+      <Paper variant="outlined">
+        <Box
+          sx={{
+            px: 2,
+            py: 1.5,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1.5,
+          }}>
+          {columnDescriptions != null && columnDescriptions.length > 0 && (
+            <EntityFilter
+              columnDescriptions={columnDescriptions}
+              filters={viewState.filters}
+              onFiltersChange={filters =>
+                setViewState(prev => ({...prev, filters, offset: 0}))
+              }
+              entityName={entityName}
+              columnTypeaheadEntities={columnTypeaheadEntities}
+            />
+          )}
+          <FilterChips
+            filters={viewState.filters}
+            onChange={filters =>
+              setViewState(prev => ({...prev, filters, offset: 0}))
+            }
+          />
+          <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 1.5}}>
+            <GroupBySelector
+              columnDescriptions={columnDescriptions ?? []}
+              groupByColumns={viewState.groupByColumns}
+              onGroupByChange={groupByColumns =>
+                setViewState(prev => ({
+                  ...prev,
+                  groupByColumns,
+                  offset: 0,
+                  orderColumn:
+                    groupByColumns.length > 0 ? groupByColumns[0] : null,
+                  orderDirection: OrderDirection.ASCENDING,
+                }))
+              }
+            />
+            <ShowColumnsSelector
+              columnDescriptions={columnDescriptions ?? []}
+              groupByColumns={viewState.groupByColumns}
+              showColumns={viewState.showColumns}
+              onShowColumnsChange={showColumns =>
+                setViewState(prev => ({...prev, showColumns}))
+              }
+            />
+          </Box>
+        </Box>
+      </Paper>
 
       {dataLoading && result == null ? (
         <div className="space-y-2">
@@ -322,6 +380,8 @@ export default function EntityView({entityName}: EntityViewProps) {
           viewState={viewState}
           onViewStateChange={setViewState}
           loading={dataLoading}
+          entityName={entityName}
+          linkEntities={linkEntities}
         />
       )}
 
@@ -329,6 +389,6 @@ export default function EntityView({entityName}: EntityViewProps) {
         entityName={entityName}
         columnDescriptions={columnDescriptions ?? []}
       />
-    </div>
+    </PageContainer>
   );
 }

@@ -2,10 +2,14 @@
 
 import {useMemo, useState} from 'react';
 
-import {Autocomplete, Chip, Paper, TextField, Typography} from '@mui/material';
+import {Autocomplete, Box, Chip, Paper, TextField} from '@mui/material';
 
-import {AUTOCOMPLETE_WORD_BREAK_PROPS, CHIP_WORD_BREAK_SX} from '@/lib/format';
+import SectionHeader from '@/app/components/ui/SectionHeader';
+import {TAG_CHIP_SX} from '@/app/components/ui/Tag';
+
+import {AUTOCOMPLETE_WORD_BREAK_PROPS} from '@/lib/format';
 import type {ColumnDescription} from '@/lib/rebalancer-explorer-types';
+import {columnTypeInfo} from '@/lib/column-types';
 import {ColumnType} from '@/lib/rebalancer-explorer-types';
 
 import MetricDistributionGraph from './MetricDistributionGraph';
@@ -16,11 +20,6 @@ interface MetricDistributionSectionProps {
 }
 
 const METRIC_TYPES = new Set([ColumnType.DIMENSION, ColumnType.UTILIZATION]);
-
-const COLUMN_TYPE_GROUP_LABEL: Partial<Record<ColumnType, string>> = {
-  [ColumnType.DIMENSION]: 'Dimensions',
-  [ColumnType.UTILIZATION]: 'Utilizations',
-};
 
 const GROUP_ORDER = ['Dimensions', 'Utilizations'];
 
@@ -44,67 +43,71 @@ export default function MetricDistributionSection({
   const selectedNames = selectedMetrics.map(col => col.name);
 
   return (
-    <Paper className="p-4 space-y-4" variant="outlined">
-      <Typography variant="subtitle1">Metric Distributions</Typography>
-
-      <Autocomplete
-        multiple
-        options={metricColumns}
-        getOptionLabel={option => option.name}
-        groupBy={option => COLUMN_TYPE_GROUP_LABEL[option.type] ?? 'Other'}
-        value={selectedMetrics}
-        onChange={(_event, newValue) => setSelectedMetrics(newValue)}
-        isOptionEqualToValue={(option, value) => option.name === value.name}
-        renderInput={params => (
-          <TextField {...params} label="Select Metrics" size="small" />
-        )}
-        renderTags={(value, getTagProps) =>
-          value.map((option, index) => {
-            const {key, ...rest} = getTagProps({index});
-            return (
-              <Chip
-                key={key}
-                label={option.name}
-                size="small"
-                sx={CHIP_WORD_BREAK_SX}
-                {...rest}
-              />
-            );
-          })
-        }
-        slotProps={{
-          listbox: {
-            sx: {
-              ...AUTOCOMPLETE_WORD_BREAK_PROPS.listbox.sx,
-              '& .MuiAutocomplete-groupLabel': {
-                fontWeight: 'bold',
+    <Paper variant="outlined">
+      <SectionHeader title="Metric distributions" />
+      <Box sx={{p: 2, display: 'flex', flexDirection: 'column', gap: 2}}>
+        <Autocomplete
+          multiple
+          options={metricColumns}
+          getOptionLabel={option => option.name}
+          groupBy={option => columnTypeInfo(option.type).group}
+          value={selectedMetrics}
+          onChange={(_event, newValue) => setSelectedMetrics(newValue)}
+          isOptionEqualToValue={(option, value) => option.name === value.name}
+          size="small"
+          sx={{maxWidth: 640}}
+          renderInput={params => (
+            <TextField {...params} label="Metrics to plot" />
+          )}
+          renderTags={(value, getTagProps) =>
+            value.map((option, index) => {
+              const {key, ...rest} = getTagProps({index});
+              return (
+                <Chip
+                  key={key}
+                  label={option.name}
+                  size="small"
+                  sx={TAG_CHIP_SX}
+                  {...rest}
+                />
+              );
+            })
+          }
+          slotProps={{
+            listbox: {
+              sx: {
+                ...AUTOCOMPLETE_WORD_BREAK_PROPS.listbox.sx,
+                '& .MuiAutocomplete-groupLabel': {
+                  typography: 'overline',
+                  lineHeight: 2.5,
+                },
               },
             },
-          },
-        }}
-        filterOptions={(options, {inputValue}) => {
-          const lowerInput = inputValue.toLowerCase();
-          const filtered = options.filter(opt =>
-            opt.name.toLowerCase().includes(lowerInput),
-          );
-          filtered.sort((a, b) => {
-            const groupA = COLUMN_TYPE_GROUP_LABEL[a.type] ?? 'Other';
-            const groupB = COLUMN_TYPE_GROUP_LABEL[b.type] ?? 'Other';
-            const orderDiff =
-              GROUP_ORDER.indexOf(groupA) - GROUP_ORDER.indexOf(groupB);
-            if (orderDiff !== 0) return orderDiff;
-            return a.name.localeCompare(b.name);
-          });
-          return filtered;
-        }}
-      />
-
-      {selectedNames.length > 0 && (
-        <MetricDistributionGraph
-          entityName={entityName}
-          selectedMetrics={selectedNames}
+          }}
+          filterOptions={(options, {inputValue}) => {
+            const lowerInput = inputValue.toLowerCase();
+            const filtered = options.filter(opt =>
+              opt.name.toLowerCase().includes(lowerInput),
+            );
+            filtered.sort((a, b) => {
+              const groupA = columnTypeInfo(a.type).group;
+              const groupB = columnTypeInfo(b.type).group;
+              const orderDiff =
+                GROUP_ORDER.indexOf(groupA) - GROUP_ORDER.indexOf(groupB);
+              if (orderDiff !== 0) return orderDiff;
+              return a.name.localeCompare(b.name);
+            });
+            return filtered;
+          }}
         />
-      )}
+
+        {selectedNames.length > 0 && (
+          <MetricDistributionGraph
+            entityName={entityName}
+            selectedMetrics={selectedNames}
+          />
+        )}
+      </Box>
     </Paper>
   );
 }

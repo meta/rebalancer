@@ -7,6 +7,7 @@ import {useParams, useRouter, useSearchParams} from 'next/navigation';
 import AssignmentCard from '@/app/components/evaluation/AssignmentCard';
 import type {Assignments} from '@/app/components/evaluation/AssignmentCard';
 import MetricsTable from '@/app/components/evaluation/MetricsTable';
+import PageHead, {PageContainer} from '@/app/components/shell/PageHead';
 import {
   getDefaultMetricsViewState,
   type MetricsViewState,
@@ -146,7 +147,11 @@ export default function MetricsView() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="p-4 space-y-4">
+    <PageContainer>
+      <PageHead
+        title={metricName ?? metricSlug}
+        sub="Evaluate metrics (e.g., container utilizations) w.r.t. different assignments."
+      />
       <AssignmentCard
         assignments={assignments}
         onAssignmentsChange={setAssignments}
@@ -168,6 +173,6 @@ export default function MetricsView() {
         metricCollectionNames={metricCollectionNames}
         onMetricNameChange={handleMetricNameChange}
       />
-    </div>
+    </PageContainer>
   );
 }
