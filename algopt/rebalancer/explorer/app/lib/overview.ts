@@ -1,6 +1,7 @@
 import type {
+  ColumnDescription,
   ExpressionResult,
-  LocalSearchProfile,
+  RowData,
 } from './rebalancer-explorer-types';
 import {ExpressionType} from './rebalancer-explorer-types';
 
@@ -168,48 +169,121 @@ export function changedObjectiveNames(
   return Array.from(new Set(changed.map(c => c.name))).slice(0, limit);
 }
 
-/**
- * Objectives that are still above 0 at B and did not change, in tuple order:
- * where to look first when asking why the solver left something unsolved.
- */
-export function stillAboveZero(
-  summary: OverviewSummary,
-): Array<TupleObjective & {tupleIndex: number}> {
-  const out: Array<TupleObjective & {tupleIndex: number}> = [];
-  for (const t of summary.tuples) {
-    for (const o of t.objectives) {
-      if (!o.changed && o.dstValue > 0) {
-        out.push({...o, tupleIndex: t.tupleIndex});
+/** How a tuple's objectives moved from A to B: the ladder's status bar. */
+export interface TupleMix {
+  improved: number;
+  regressed: number;
+  // Unchanged and still above or below 0 at B.
+  unchangedNonzero: number;
+  // Unchanged and exactly 0 at B, the ideal.
+  zero: number;
+}
+
+export function tupleMix(t: TupleSummary): TupleMix {
+  const mix = {improved: 0, regressed: 0, unchangedNonzero: 0, zero: 0};
+  for (const o of t.objectives) {
+    if (o.changed) {
+      if (o.dstValue < o.srcValue) {
+        mix.improved++;
+      } else {
+        mix.regressed++;
       }
+    } else if (o.dstValue !== 0) {
+      mix.unchangedNonzero++;
+    } else {
+      mix.zero++;
     }
+  }
+  return mix;
+}
+
+/**
+ * The change of each objective in every move set, as `getMoveSets` reports it
+ * in its `<objective> (Δ)` columns.
+ */
+export interface MoveSetDeltas {
+  names: string[];
+  // One entry per move set, in solver order; entry j is the change of names[j].
+  sets: number[][];
+}
+
+/**
+ * Reads the per-move-set changes of `names` from `getMoveSets` rows. Column 0
+ * is the 1-based move set number. The server repeats a move set's changes on
+ * each of its rows, so the first row of each set is kept.
+ */
+export function moveSetDeltasFromRows(
+  columns: readonly ColumnDescription[],
+  rows: readonly RowData[],
+  names: readonly string[],
+): MoveSetDeltas {
+  const cols = names.map(name => {
+    const i = columns.findIndex(c => c.name === `${name} (Δ)`);
+    if (i < 0) {
+      throw new Error(`Move sets have no change column for ${name}`);
+    }
+    return i;
+  });
+  const bySet = new Map<number, number[]>();
+  for (const row of rows) {
+    const set = row.cells[0]?.doubleValue;
+    if (set == null || bySet.has(set)) {
+      continue;
+    }
+    bySet.set(
+      set,
+      cols.map(i => row.cells[i]?.doubleValue ?? 0),
+    );
+  }
+  const sets = Array.from(bySet.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([, deltas]) => deltas);
+  return {names: [...names], sets};
+}
+
+/**
+ * Each tuple's total after every move set: index 0 is the Initial total and
+ * index k adds the changes of the tuple's objectives in the first k move
+ * sets. Tuples with no objective in `deltas` are left out.
+ */
+export function tupleStepTotals(
+  summary: OverviewSummary,
+  deltas: MoveSetDeltas,
+): Map<number, number[]> {
+  const column = new Map(deltas.names.map((name, j) => [name, j]));
+  const out = new Map<number, number[]>();
+  for (const t of summary.tuples) {
+    const cols = t.objectives
+      .map(o => column.get(o.name))
+      .filter((j): j is number => j != null);
+    if (cols.length === 0) {
+      continue;
+    }
+    let total = t.srcTotal;
+    const series = [total];
+    for (const set of deltas.sets) {
+      for (const j of cols) {
+        total += set[j];
+      }
+      series.push(total);
+    }
+    out.set(t.tupleIndex, series);
   }
   return out;
 }
 
-/**
- * Objective value against cumulative search time for one local-search
- * profile, thinned to at most `maxPoints` points (first and last kept).
- */
-export function profileTrace(
-  profile: LocalSearchProfile,
+/** At most `maxPoints` evenly spaced values, the first and last kept. */
+export function thinSeries(
+  values: readonly number[],
   maxPoints = 120,
-): Array<{t: number; v: number}> {
-  const points: Array<{t: number; v: number}> = [];
-  let t = 0;
-  for (const event of profile.moveTypeEvents) {
-    if (points.length === 0) {
-      points.push({t, v: event.initialValue});
-    }
-    t += event.duration;
-    points.push({t, v: event.finalValue});
+): number[] {
+  if (values.length <= maxPoints) {
+    return [...values];
   }
-  if (points.length <= maxPoints) {
-    return points;
-  }
-  const step = (points.length - 1) / (maxPoints - 1);
-  const out: Array<{t: number; v: number}> = [];
+  const step = (values.length - 1) / (maxPoints - 1);
+  const out: number[] = [];
   for (let i = 0; i < maxPoints; i++) {
-    out.push(points[Math.round(i * step)]);
+    out.push(values[Math.round(i * step)]);
   }
   return out;
 }

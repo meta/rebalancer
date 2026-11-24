@@ -74,9 +74,9 @@ export default function SummaryPage() {
   const {metadata} = useProblemMetadata();
   const {handle} = useRebalancerHandle();
   const params = useParams<{runId: string}>();
-  const {summary, moveSetCount, profiles} = useRunOverviewData(
+  const {summary, moveSetCount, moveSetDeltas} = useRunOverviewData(
     handle,
-    metadata?.hasFinalAssignment ?? false,
+    metadata,
   );
 
   // ProblemMetadataProvider renders children only once metadata has loaded.
@@ -107,7 +107,7 @@ export default function SummaryPage() {
       <PriorityLadder
         basePath={basePath}
         summary={summary}
-        profiles={profiles}
+        moveSetDeltas={moveSetDeltas}
         hasFinalAssignment={metadata.hasFinalAssignment}
       />
       <Paper variant="outlined">

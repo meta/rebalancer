@@ -2,19 +2,22 @@
 
 import type {ReactNode} from 'react';
 
-import {Box} from '@mui/material';
+import {Box, type SxProps, type Theme} from '@mui/material';
 
 import {COLOR, TEXT} from '@/lib/ui-tokens';
 
 /**
  * A chart legend in the design language: under the chart, left-aligned,
  * 12px secondary text with a 10px rounded swatch per series. Pass it as a
- * recharts `<Legend content={ChartLegend} />`.
+ * recharts `<Legend content={ChartLegend} />`, or render it with your own
+ * `payload` and an `sx` for its spacing.
  */
 export default function ChartLegend({
   payload,
+  sx,
 }: {
   payload?: ReadonlyArray<{value?: unknown; color?: string}>;
+  sx?: SxProps<Theme>;
 }): ReactNode {
   if (payload == null || payload.length === 0) {
     return null;
@@ -22,19 +25,22 @@ export default function ChartLegend({
   return (
     <Box
       component="ul"
-      sx={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        columnGap: 2,
-        rowGap: 0.5,
-        listStyle: 'none',
-        m: 0,
-        p: 0,
-        pt: 1,
-        pl: 1,
-        fontSize: TEXT.xs,
-        color: COLOR.textSecondary,
-      }}>
+      sx={[
+        {
+          display: 'flex',
+          flexWrap: 'wrap',
+          columnGap: 2,
+          rowGap: 0.5,
+          listStyle: 'none',
+          m: 0,
+          p: 0,
+          pt: 1,
+          pl: 1,
+          fontSize: TEXT.xs,
+          color: COLOR.textSecondary,
+        },
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}>
       {payload.map(entry => (
         <Box
           component="li"

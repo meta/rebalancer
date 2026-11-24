@@ -2,16 +2,18 @@
 
 import {useEffect, useState} from 'react';
 
-import {summarizeEvaluations, type OverviewSummary} from '@/lib/overview';
 import {
-  fetchEvaluation,
-  fetchLocalSearchProfiles,
-  fetchMoveSets,
-} from '@/lib/rebalancer-explorer-api';
+  moveSetDeltasFromRows,
+  summarizeEvaluations,
+  type MoveSetDeltas,
+  type OverviewSummary,
+} from '@/lib/overview';
+import {fetchEvaluation, fetchMoveSets} from '@/lib/rebalancer-explorer-api';
 import {
   AssignmentBase,
   type Handle,
-  type LocalSearchProfile,
+  type ProblemMetadata,
+  type RowData,
 } from '@/lib/rebalancer-explorer-types';
 
 export interface Loadable<T> {
@@ -22,6 +24,11 @@ export interface Loadable<T> {
 
 const INITIAL = {base: AssignmentBase.INITIAL, variableToContainerOverride: {}};
 const FINAL = {base: AssignmentBase.FINAL, variableToContainerOverride: {}};
+
+// getMoveSets pages by rows, one per move.
+const MOVE_ROWS_PER_PAGE = 500;
+// Above this many moves the Summary skips the per-step totals.
+const MAX_MOVE_ROWS = 5000;
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
@@ -66,7 +73,7 @@ function useLoad<T>(
     return () => {
       cancelled = true;
     };
-    // `load` is a module-level function per call site.
+    // `load` only reads values that are fixed for a handle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handle, enabled]);
   return state;
@@ -90,25 +97,58 @@ async function loadMoveSetCount(handle: Handle): Promise<number> {
   return response.table.totalCount;
 }
 
-async function loadProfiles(handle: Handle): Promise<LocalSearchProfile[]> {
-  const response = await fetchLocalSearchProfiles(handle);
-  return response.profiles;
+/**
+ * The change of every objective in every move set from Initial to Final, or
+ * null when the run has more than MAX_MOVE_ROWS moves.
+ */
+async function loadMoveSetDeltas(
+  handle: Handle,
+  objectiveNames: string[],
+): Promise<MoveSetDeltas | null> {
+  const page = (offset: number) =>
+    fetchMoveSets(handle, {
+      assignmentA: INITIAL,
+      assignmentB: FINAL,
+      query: {entity: 'move_sets', page: {offset, limit: MOVE_ROWS_PER_PAGE}},
+      objectiveNames,
+    });
+  const first = (await page(0)).table;
+  if (first.totalCount > MAX_MOVE_ROWS) {
+    return null;
+  }
+  const offsets = [];
+  for (
+    let offset = MOVE_ROWS_PER_PAGE;
+    offset < first.totalCount;
+    offset += MOVE_ROWS_PER_PAGE
+  ) {
+    offsets.push(offset);
+  }
+  const rest = await Promise.all(offsets.map(page));
+  const rows: RowData[] = [
+    ...first.rows,
+    ...rest.flatMap(response => response.table.rows),
+  ];
+  return moveSetDeltasFromRows(first.columns, rows, objectiveNames);
 }
 
 /**
  * Data for the Summary overview: the Initial vs Final evaluation summary, the
- * number of move sets between them and the local-search profiles. Each part
- * loads and fails on its own, so one slow or failing call never blocks the
- * others. Runs without a final assignment skip the comparisons.
+ * number of move sets between them and each move set's objective changes.
+ * Each part loads and fails on its own, so one slow or failing call never
+ * blocks the others. Runs without a final assignment skip the comparisons,
+ * and runs saved without per-move-set changes skip the last part.
  */
 export function useRunOverviewData(
   handle: Handle | null,
-  hasFinalAssignment: boolean,
+  metadata: ProblemMetadata | null,
 ): {
   summary: Loadable<OverviewSummary>;
   moveSetCount: Loadable<number>;
-  profiles: Loadable<LocalSearchProfile[]>;
+  moveSetDeltas: Loadable<MoveSetDeltas | null>;
 } {
+  const hasFinalAssignment = metadata?.hasFinalAssignment ?? false;
+  const objectiveNames = metadata?.objectiveNames ?? [];
   const summary = useLoad(
     handle,
     hasFinalAssignment,
@@ -121,11 +161,13 @@ export function useRunOverviewData(
     loadMoveSetCount,
     'Failed to count move sets',
   );
-  const profiles = useLoad(
+  const moveSetDeltas = useLoad(
     handle,
-    true,
-    loadProfiles,
-    'Failed to load local search profiles',
+    hasFinalAssignment &&
+      (metadata?.canDisplayObjChangesInMoveSetsTable ?? false) &&
+      objectiveNames.length > 0,
+    h => loadMoveSetDeltas(h, objectiveNames),
+    'Failed to load the objective changes per move set',
   );
-  return {summary, moveSetCount, profiles};
+  return {summary, moveSetCount, moveSetDeltas};
 }

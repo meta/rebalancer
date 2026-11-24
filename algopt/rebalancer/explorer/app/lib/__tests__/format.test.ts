@@ -16,7 +16,14 @@
 
 import {describe, expect, it} from 'vitest';
 
-import {formatCount, formatRuntime, toTitleCase} from '@/lib/format';
+import {
+  formatCompact,
+  formatCount,
+  formatPercentChange,
+  formatRuntime,
+  formatSignedCompact,
+  toTitleCase,
+} from '@/lib/format';
 
 describe('toTitleCase', () => {
   it('converts UPPER_SNAKE_CASE to Title Case', () => {
@@ -95,5 +102,45 @@ describe('formatRuntime', () => {
     [7200, '2 h'],
   ])('%s -> %s', (seconds, text) => {
     expect(formatRuntime(seconds)).toBe(text);
+  });
+});
+
+describe('formatCompact', () => {
+  it.each([
+    [0, '0'],
+    [3.113754638, '3.11'],
+    [0.8566804063, '0.857'],
+    [264, '264'],
+    [1234.56, '1,234.6'],
+    [52250, '52.3K'],
+    [1234567, '1.23M'],
+    [-6.791815101e-7, '−6.8e−7'],
+    [1e-6, '1e−6'],
+    [2.5e15, '2.50e15'],
+    [Infinity, '∞'],
+    [NaN, '—'],
+  ])('%s -> %s', (value, text) => {
+    expect(formatCompact(value)).toBe(text);
+  });
+});
+
+describe('formatSignedCompact', () => {
+  it('signs non-zero changes and leaves 0 bare', () => {
+    expect(formatSignedCompact(264)).toBe('+264');
+    expect(formatSignedCompact(-6.791815101e-7)).toBe('−6.8e−7');
+    expect(formatSignedCompact(0)).toBe('0');
+  });
+});
+
+describe('formatPercentChange', () => {
+  it.each([
+    [-1, 4, '−25%'],
+    [0.15, 10, '+1.5%'],
+    [-6.791815101e-7, 3.113754638, '−<0.01%'],
+    [264, 0, 'new'],
+    [-1, 0, ''],
+    [0, 5, ''],
+  ])('%s of %s -> %s', (delta, base, text) => {
+    expect(formatPercentChange(delta, base)).toBe(text);
   });
 });

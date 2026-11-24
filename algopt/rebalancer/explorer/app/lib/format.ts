@@ -154,3 +154,79 @@ export function formatRuntime(totalSeconds: number): string {
   }
   return parts.join(' ');
 }
+
+const MINUS = '−';
+
+const COMPACT_UNITS = [
+  [1e12, 'T'],
+  [1e9, 'B'],
+  [1e6, 'M'],
+  [1e3, 'K'],
+] as const;
+
+function trimZeros(s: string): string {
+  return s.includes('.') ? s.replace(/\.?0+$/, '') : s;
+}
+
+/**
+ * A short, readable number: K/M/B/T from 10,000, an exponent below 1e-4,
+ * at most 3 significant digits below 1, and a true minus sign.
+ * 3.113754638 -> "3.11", 264 -> "264", 1234567 -> "1.23M", -6.8e-7 -> "−6.8e−7".
+ */
+export function formatCompact(v: number): string {
+  if (Number.isNaN(v)) {
+    return '—';
+  }
+  if (!Number.isFinite(v)) {
+    return v > 0 ? '∞' : `${MINUS}∞`;
+  }
+  const a = Math.abs(v);
+  let s: string;
+  if (a === 0) {
+    s = '0';
+  } else if (a < 1e-4) {
+    s = a.toExponential(1).replace('e-', `e${MINUS}`).replace('.0e', 'e');
+  } else if (a >= 1e15) {
+    s = a.toExponential(2).replace('e+', 'e');
+  } else if (a >= 1e4) {
+    const [unit, suffix] =
+      COMPACT_UNITS.find(([u]) => a >= u) ?? COMPACT_UNITS[3];
+    const x = a / unit;
+    s = trimZeros(x.toFixed(x >= 100 ? 0 : x >= 10 ? 1 : 2)) + suffix;
+  } else if (a >= 100) {
+    s = formatCount(Number(a.toFixed(1)));
+  } else if (a >= 1) {
+    s = trimZeros(a.toFixed(2));
+  } else {
+    s = trimZeros(a.toPrecision(3));
+  }
+  return (v < 0 ? MINUS : '') + s;
+}
+
+/** A compact change with its sign: "+264", "−6.8e−7"; 0 stays "0". */
+export function formatSignedCompact(delta: number): string {
+  if (delta === 0) {
+    return '0';
+  }
+  return (delta > 0 ? '+' : MINUS) + formatCompact(Math.abs(delta));
+}
+
+/**
+ * A change as a percentage of |base|: "−12%", "+1.5%", "−<0.01%"; "new"
+ * when a zero base grows, and "" when there is no change or no base.
+ */
+export function formatPercentChange(delta: number, base: number): string {
+  if (delta === 0 || Number.isNaN(delta)) {
+    return '';
+  }
+  if (base === 0) {
+    return delta > 0 ? 'new' : '';
+  }
+  const p = (delta / Math.abs(base)) * 100;
+  const sign = p > 0 ? '+' : MINUS;
+  const a = Math.abs(p);
+  if (a < 0.01) {
+    return `${sign}<0.01%`;
+  }
+  return `${sign}${trimZeros(a.toFixed(a >= 10 ? 0 : a >= 1 ? 1 : 2))}%`;
+}

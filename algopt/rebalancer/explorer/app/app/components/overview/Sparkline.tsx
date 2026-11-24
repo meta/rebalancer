@@ -2,48 +2,44 @@
 
 import {Box} from '@mui/material';
 
-import {ACCENT, TEXT_DISABLED} from '@/lib/ui-tokens';
-
 /**
- * A small line of values over time with a dot at the end. A flat series is
- * drawn as a muted midline. `label` is the accessible description.
+ * A small line over evenly spaced values, with a light area under it and a
+ * dot at the last value. `label` is the accessible description.
  */
 export default function Sparkline({
-  points,
+  values,
+  color,
   label,
-  width = 120,
-  height = 28,
+  width = 104,
+  height = 26,
 }: {
-  points: ReadonlyArray<{t: number; v: number}>;
+  values: readonly number[];
+  color: string;
   label: string;
   width?: number;
   height?: number;
 }) {
-  if (points.length < 2) {
+  if (values.length < 2) {
     return null;
   }
-  const pad = 3;
-  const t0 = points[0].t;
-  const t1 = points[points.length - 1].t;
-  let vMin = Infinity;
-  let vMax = -Infinity;
-  for (const p of points) {
-    vMin = Math.min(vMin, p.v);
-    vMax = Math.max(vMax, p.v);
+  const pad = 2;
+  let lo = Math.min(...values);
+  let hi = Math.max(...values);
+  if (hi - lo < 1e-12) {
+    hi = lo + 1;
   }
-  const flat = vMax === vMin;
-  const x = (t: number) =>
-    pad + (t1 === t0 ? 0 : ((t - t0) / (t1 - t0)) * (width - 2 * pad));
+  const n = values.length;
+  const x = (i: number) => pad + (i * (width - 2 * pad)) / (n - 1);
   const y = (v: number) =>
-    flat ? height / 2 : pad + ((vMax - v) / (vMax - vMin)) * (height - 2 * pad);
-  const d = points
+    height - pad - ((v - lo) / (hi - lo)) * (height - 2 * pad);
+  const line = values
     .map(
-      (p, i) =>
-        `${i === 0 ? 'M' : 'L'}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`,
+      (v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`,
     )
     .join('');
-  const last = points[points.length - 1];
-  const color = flat ? TEXT_DISABLED : ACCENT;
+  const bottom = (height - pad).toFixed(1);
+  const area = `${line}L${x(n - 1).toFixed(1)},${bottom}L${x(0).toFixed(1)},${bottom}Z`;
+  const last = values[n - 1];
   return (
     <Box
       component="svg"
@@ -52,15 +48,16 @@ export default function Sparkline({
       viewBox={`0 0 ${width} ${height}`}
       sx={{width, height, display: 'block', flexShrink: 0}}>
       <title>{label}</title>
+      <path d={area} fill={color} fillOpacity={0.1} />
       <path
-        d={d}
+        d={line}
         fill="none"
         stroke={color}
-        strokeWidth={1.5}
+        strokeWidth={1.6}
         strokeLinejoin="round"
         strokeLinecap="round"
       />
-      <circle cx={x(last.t)} cy={y(last.v)} r={2.25} fill={color} />
+      <circle cx={x(n - 1)} cy={y(last)} r={2.4} fill={color} />
     </Box>
   );
 }

@@ -1,216 +1,213 @@
 'use client';
 
-import type {KeyboardEvent, MouseEvent} from 'react';
-
-import {Box, Button, Link as MuiLink, Paper, Skeleton} from '@mui/material';
-import {ChevronRight, Equal, Check, TriangleAlert} from 'lucide-react';
+import {Box, Link as MuiLink, Paper, Skeleton, Tooltip} from '@mui/material';
 import Link from 'next/link';
-import {useRouter} from 'next/navigation';
 
-import PreciseNumber from '@/app/components/evaluation/PreciseNumber';
-import {CompositionBar} from '@/app/components/ui/Bars';
-import {ChangeIcon, changeTone} from '@/app/components/ui/Delta';
-import HintIcon from '@/app/components/ui/HintIcon';
-import Pill from '@/app/components/ui/Pill';
+import ChartLegend from '@/app/components/ui/ChartLegend';
+import Delta, {changeTone} from '@/app/components/ui/Delta';
 import SectionHeader from '@/app/components/ui/SectionHeader';
 import {EmptyState, ErrorState} from '@/app/components/ui/StateViews';
 import TupleBadge from '@/app/components/ui/TupleBadge';
 import {constraintsObjectivesHref} from '@/app/components/overview/links';
 import Sparkline from '@/app/components/overview/Sparkline';
 import type {Loadable} from '@/app/components/overview/useRunOverviewData';
-import {precise} from '@/lib/format';
 import {
-  profileTrace,
-  stillAboveZero,
+  formatCompact,
+  formatPercentChange,
+  formatSignedCompact,
+  precise,
+} from '@/lib/format';
+import {
+  thinSeries,
+  tupleMix,
+  tupleStepTotals,
+  type MoveSetDeltas,
   type OverviewSummary,
+  type TupleMix,
   type TupleSummary,
 } from '@/lib/overview';
-import type {LocalSearchProfile} from '@/lib/rebalancer-explorer-types';
+import {tupleColor} from '@/lib/priority-colors';
 import {
   COLOR,
-  DURATION,
   focusRing,
   radius,
   TABULAR,
   TEXT,
+  TEXT_DISABLED,
   WEIGHT,
 } from '@/lib/ui-tokens';
 
-// Objective names listed per row before "+N more".
+// Tuple rows shown before "All N priorities".
+const MAX_ROWS = 18;
+// Objective names in a row's label before "+N".
 const NAMES_SHOWN = 2;
-// Objectives listed under "Still above 0" before "+N more".
-const STILL_SHOWN = 5;
 
-const DECIDES_HINT =
-  'Rebalancer minimizes the objective tuple in index order: the first tuple index whose total differs decides which assignment is better.';
+const MIX: ReadonlyArray<{key: keyof TupleMix; label: string; color: string}> =
+  [
+    {key: 'improved', label: 'Improved', color: COLOR.positive},
+    {key: 'regressed', label: 'Regressed', color: COLOR.negative},
+    {
+      key: 'unchangedNonzero',
+      label: 'Unchanged, non-zero',
+      color: COLOR.caution,
+    },
+    {key: 'zero', label: 'Zero (ideal)', color: COLOR.borderStrong},
+  ];
 
-function counts(t: TupleSummary) {
-  let better = 0;
-  let worse = 0;
-  for (const o of t.objectives) {
-    if (o.dstValue < o.srcValue) {
-      better++;
-    } else if (o.dstValue > o.srcValue) {
-      worse++;
-    }
-  }
-  return {better, worse, unchanged: t.objectives.length - better - worse};
-}
+const MIX_TIP: Record<keyof TupleMix, string> = {
+  improved: 'improved',
+  regressed: 'regressed',
+  unchangedNonzero: 'unchanged but non-zero',
+  zero: 'at zero (ideal)',
+};
 
-/**
- * The verdict: is Final better than Initial, decided at which tuple index,
- * and by how much.
- */
-function Verdict({
-  summary,
-  maxTupleIndex,
-}: {
-  summary: OverviewSummary;
-  maxTupleIndex: number;
-}) {
-  const t = summary.tuples.find(
-    x => x.tupleIndex === summary.decidingTupleIndex,
-  );
-  const better = t != null && t.delta < 0;
-  const tone =
-    t == null
-      ? {
-          bg: COLOR.bgSubtle,
-          border: COLOR.borderDefault,
-          icon: COLOR.textTertiary,
-        }
-      : better
-        ? {
-            bg: COLOR.positiveBg,
-            border: COLOR.positiveBorder,
-            icon: COLOR.positive,
-          }
-        : {
-            bg: COLOR.negativeBg,
-            border: COLOR.negativeBorder,
-            icon: COLOR.negative,
-          };
-  const Icon = t == null ? Equal : better ? Check : TriangleAlert;
-  return (
-    <Box
-      role="status"
-      sx={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 1.5,
-        mx: 2,
-        mb: 1.5,
-        px: 2,
-        py: 1.5,
-        borderRadius: radius('lg'),
-        border: `1px solid ${tone.border}`,
-        bgcolor: tone.bg,
-      }}>
-      <Box
-        component="span"
-        aria-hidden
-        sx={{display: 'flex', mt: '2px', color: tone.icon}}>
-        <Icon size={16} strokeWidth={2.5} />
-      </Box>
-      <Box sx={{minWidth: 0}}>
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: 1,
-            fontSize: TEXT.lg,
-            fontWeight: WEIGHT.heading,
-            color: COLOR.textPrimary,
-          }}>
-          {t == null ? (
-            'Initial and Final have equal totals at every tuple index'
-          ) : (
-            <>
-              {`Final is ${better ? 'better' : 'worse'} than Initial — decided at`}
-              <TupleBadge
-                tupleIndex={t.tupleIndex}
-                maxTupleIndex={maxTupleIndex}
-                hint={DECIDES_HINT}
-              />
-            </>
-          )}
-        </Box>
-        <Box sx={{mt: 0.25, color: COLOR.textSecondary}}>
-          {t != null && (
-            <>
-              {t.objectives.map(o => o.name).join(', ')}{' '}
-              <Box component="span" sx={TABULAR}>
-                {precise(t.srcTotal)} → <b>{precise(t.dstTotal)}</b>
-              </Box>{' '}
-              <PreciseNumber value={t.delta} highlight signed />.{' '}
-            </>
-          )}
-          Rebalancer compares these totals in index order, starting at 0: the
-          first index whose total differs decides, and a higher index only
-          breaks ties.
-        </Box>
-      </Box>
-    </Box>
-  );
-}
-
-const GRID = {
+const ROW_GRID = {
   display: 'grid',
-  gridTemplateColumns:
-    '76px minmax(0, 1.6fr) 120px minmax(220px, 1fr) 150px var(--trace-w) 16px',
+  gridTemplateColumns: '56px minmax(0, 1.4fr) minmax(0, 1fr) 150px 110px',
   columnGap: 1.5,
   alignItems: 'center',
   px: 2,
   '@media (max-width: 760px)': {
-    gridTemplateColumns: '76px minmax(0, 1fr) 96px 16px',
+    gridTemplateColumns: '56px minmax(0, 1fr) 120px',
     '& .hide-sm': {display: 'none'},
   },
 } as const;
 
+function plural(n: number, one: string): string {
+  return `${n} ${n === 1 ? one : `${one}s`}`;
+}
+
+/** The share of a tuple's objectives in each status, as one 8px bar. */
+function MixBar({mix, total}: {mix: TupleMix; total: number}) {
+  return (
+    <Box
+      role="img"
+      aria-label={MIX.map(m => `${mix[m.key]} ${MIX_TIP[m.key]}`).join(', ')}
+      sx={{
+        display: 'flex',
+        height: 8,
+        borderRadius: radius('full'),
+        overflow: 'hidden',
+        bgcolor: COLOR.bgSubtle,
+      }}>
+      {MIX.filter(m => mix[m.key] > 0).map(m => (
+        <Tooltip key={m.key} title={`${mix[m.key]} ${MIX_TIP[m.key]}`}>
+          <Box
+            sx={{
+              width: `${(100 * mix[m.key]) / total}%`,
+              height: '100%',
+              bgcolor: m.color,
+            }}
+          />
+        </Tooltip>
+      ))}
+    </Box>
+  );
+}
+
+/** Initial → Final in short form, and the change with its percentage. */
+function Values({t}: {t: TupleSummary}) {
+  const tone = changeTone(t.delta);
+  const pct = formatPercentChange(t.delta, t.srcTotal);
+  return (
+    <Tooltip
+      title={`Initial ${precise(t.srcTotal)} → Final ${precise(t.dstTotal)}, change ${precise(t.delta)}`}>
+      <Box
+        sx={{
+          textAlign: 'right',
+          fontSize: TEXT.xs,
+          whiteSpace: 'nowrap',
+          ...TABULAR,
+        }}>
+        <Box component="span" sx={{color: COLOR.textTertiary}}>
+          {formatCompact(t.srcTotal)}
+        </Box>{' '}
+        <Box component="span" aria-label="to" sx={{color: TEXT_DISABLED}}>
+          →
+        </Box>{' '}
+        <Box component="b" sx={{fontWeight: WEIGHT.bold}}>
+          {formatCompact(t.dstTotal)}
+        </Box>
+        <Box>
+          <Delta tone={tone}>
+            {tone === 'zero' ? 'no change' : formatSignedCompact(t.delta)}
+            {pct !== '' && (
+              <Box
+                component="span"
+                sx={{fontWeight: WEIGHT.medium, opacity: 0.85}}>
+                {` (${pct})`}
+              </Box>
+            )}
+          </Delta>
+        </Box>
+      </Box>
+    </Tooltip>
+  );
+}
+
 /**
- * Ranked rows, one per tuple index in the order the solver compares them:
- * rank pill, objectives, the share that got better or worse, Initial → Final,
- * the change, the local-search trace and a chevron to that index on
+ * The tuple's total after each move set, or "flat" when Initial and Final
+ * are equal.
+ */
+function Trend({
+  t,
+  color,
+  totals,
+  loading,
+}: {
+  t: TupleSummary;
+  color: string;
+  totals: number[] | undefined;
+  loading: boolean;
+}) {
+  if (t.delta === 0) {
+    return (
+      <Box component="span" sx={{color: TEXT_DISABLED, fontSize: TEXT.xs}}>
+        flat
+      </Box>
+    );
+  }
+  if (loading) {
+    return <Skeleton variant="rounded" width={104} height={26} />;
+  }
+  if (totals == null) {
+    return null;
+  }
+  return (
+    <Sparkline
+      values={thinSeries(totals)}
+      color={color}
+      label={`Tuple index ${t.tupleIndex}: total after each of ${totals.length - 1} move sets`}
+    />
+  );
+}
+
+/**
+ * The priority ladder: one row per objective tuple index, in the order the
+ * solver compares them, with the status mix of its objectives, Initial →
+ * Final and the total after each move set. A row opens its tuple on
  * Constraints & Objectives.
  */
 export default function PriorityLadder({
   basePath,
   summary,
-  profiles,
+  moveSetDeltas,
   hasFinalAssignment,
 }: {
   basePath: string;
   summary: Loadable<OverviewSummary>;
-  profiles: Loadable<LocalSearchProfile[]>;
+  moveSetDeltas: Loadable<MoveSetDeltas | null>;
   hasFinalAssignment: boolean;
 }) {
-  const router = useRouter();
   const s = summary.data;
-  const traces = profiles.data ?? [];
-  const showTraces = traces.some(p => p.moveTypeEvents.length > 0);
-  const coHref = constraintsObjectivesHref(basePath, {dstBase: 'FINAL'});
   const maxTupleIndex =
     s != null && s.tuples.length > 0
       ? s.tuples[s.tuples.length - 1].tupleIndex
       : 0;
-  const tupleHref = (tupleIndex: number) =>
-    constraintsObjectivesHref(basePath, {dstBase: 'FINAL', tuple: tupleIndex});
-  // A row opens its tuple's table on Constraints & Objectives; the objective
-  // links inside it keep opening that objective.
-  const onRowClick = (e: MouseEvent<HTMLElement>, href: string) => {
-    if ((e.target as HTMLElement).closest('a, button') != null) {
-      return;
-    }
-    router.push(href);
-  };
-  const onRowKeyDown = (e: KeyboardEvent<HTMLElement>, href: string) => {
-    if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
-      e.preventDefault();
-      router.push(href);
-    }
-  };
-  const still = s != null ? stillAboveZero(s) : [];
+  const stepTotals =
+    s != null && moveSetDeltas.data != null
+      ? tupleStepTotals(s, moveSetDeltas.data)
+      : null;
 
   let body;
   if (!hasFinalAssignment) {
@@ -230,7 +227,7 @@ export default function PriorityLadder({
     body = (
       <Box sx={{px: 2, pb: 1.5}}>
         {[0, 1, 2, 3].map(i => (
-          <Skeleton key={i} variant="text" height={36} />
+          <Skeleton key={i} variant="text" height={44} />
         ))}
       </Box>
     );
@@ -238,297 +235,100 @@ export default function PriorityLadder({
     body = <EmptyState compact title="This run has no objectives." />;
   } else {
     body = (
-      <>
-        <Verdict summary={s} maxTupleIndex={maxTupleIndex} />
-        <Box
-          role="table"
-          aria-label="Objective totals by tuple index"
-          sx={{'--trace-w': showTraces ? '110px' : '0px', overflowX: 'auto'}}>
-          <Box
-            role="row"
-            sx={{
-              ...GRID,
-              py: 1,
-              bgcolor: COLOR.bgSurface2,
-              borderTop: `1px solid ${COLOR.borderDefault}`,
-              borderBottom: `1px solid ${COLOR.borderDefault}`,
-              color: COLOR.textTertiary,
-              fontSize: TEXT.xs,
-              fontWeight: WEIGHT.semibold,
-              '& .num': {textAlign: 'right'},
-            }}>
-            <span role="columnheader">Tuple index</span>
-            <span role="columnheader">Objectives</span>
-            <span role="columnheader">Changed</span>
-            <span role="columnheader" className="num hide-sm">
-              Initial → Final
-            </span>
-            <span role="columnheader" className="num hide-sm">
-              Final − Initial
-            </span>
+      <Box>
+        {s.tuples.slice(0, MAX_ROWS).map(t => {
+          const names = t.objectives.map(o => o.name);
+          const more = names.length - NAMES_SHOWN;
+          const color = tupleColor(t.tupleIndex, maxTupleIndex);
+          return (
             <Box
-              component="span"
-              role="columnheader"
-              className="hide-sm"
+              key={t.tupleIndex}
+              component={Link}
+              href={constraintsObjectivesHref(basePath, {
+                dstBase: 'FINAL',
+                tuple: t.tupleIndex,
+              })}
               sx={{
-                display: showTraces ? 'inline-flex' : 'none',
-                alignItems: 'center',
-                gap: 0.5,
+                ...ROW_GRID,
+                py: '9px',
+                color: 'inherit',
+                textDecoration: 'none',
+                borderBottom: `1px solid ${COLOR.borderDefault}`,
+                '&:last-of-type': {borderBottom: 0},
+                '&:hover': {bgcolor: COLOR.bgSurface2},
+                '&:focus-visible': focusRing(-2),
               }}>
-              Search trace
-              <HintIcon
-                title="Objective value over local-search time for this goal index, from the run's local search profile. Local Search shows the full chart."
-                label="Help: Search trace"
-              />
-            </Box>
-            <span role="columnheader" aria-label="Open" />
-          </Box>
-          {s.tuples.map(t => {
-            const profile = traces[t.tupleIndex];
-            const trace = profile != null ? profileTrace(profile) : [];
-            const shown = t.objectives.slice(0, NAMES_SHOWN);
-            const more = t.objectives.length - shown.length;
-            const decides = t.tupleIndex === s.decidingTupleIndex;
-            const href = tupleHref(t.tupleIndex);
-            const c = counts(t);
-            const tone = changeTone(t.delta);
-            return (
-              <Box
-                key={t.tupleIndex}
-                role="row"
-                tabIndex={0}
-                aria-label={`Tuple index ${t.tupleIndex}: open its table on Constraints & Objectives`}
-                onClick={e => onRowClick(e, href)}
-                onKeyDown={e => onRowKeyDown(e, href)}
-                sx={{
-                  ...GRID,
-                  py: 1.25,
-                  cursor: 'pointer',
-                  borderBottom: `1px solid ${COLOR.borderDefault}`,
-                  '&:last-of-type': {borderBottom: 0},
-                  '&:hover': {bgcolor: COLOR.bgSurface2},
-                  '&:focus-visible': {...focusRing(-2), borderRadius: '6px'},
-                  '&:hover .go, &:focus-visible .go': {
-                    color: COLOR.action,
-                    transform: 'translateX(2px)',
-                  },
-                }}>
-                <Box role="cell">
-                  <TupleBadge
-                    tupleIndex={t.tupleIndex}
-                    maxTupleIndex={maxTupleIndex}
-                  />
-                </Box>
-                <Box role="cell" sx={{minWidth: 0}}>
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      columnGap: 1,
-                      minWidth: 0,
-                    }}>
-                    {shown.map(o => (
-                      <MuiLink
-                        key={o.id}
-                        component={Link}
-                        href={constraintsObjectivesHref(basePath, {
-                          dstBase: 'FINAL',
-                          name: o.name,
-                          expressionId: o.id,
-                        })}
-                        title={`Open ${o.name} on Constraints & Objectives`}
-                        underline="hover"
-                        sx={{
-                          minWidth: 0,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          fontWeight: WEIGHT.semibold,
-                          color: o.changed
-                            ? COLOR.textPrimary
-                            : COLOR.textSecondary,
-                        }}>
-                        {o.name}
-                      </MuiLink>
-                    ))}
-                    {more > 0 && (
-                      <MuiLink
-                        component={Link}
-                        href={coHref}
-                        sx={{flexShrink: 0, fontSize: TEXT.xs}}>
-                        +{more} more
-                      </MuiLink>
-                    )}
-                    {decides && (
-                      <Pill tone="info" title={DECIDES_HINT}>
-                        decides
-                      </Pill>
-                    )}
-                  </Box>
-                  <Box sx={{color: COLOR.textTertiary, fontSize: TEXT.xs}}>
-                    {t.changedCount} of {t.objectives.length} changed
-                    {c.worse > 0 && (
-                      <>
-                        {' · '}
-                        <Box
-                          component="span"
-                          sx={{
-                            color: COLOR.negativeText,
-                            fontWeight: WEIGHT.semibold,
-                          }}>
-                          {c.worse} higher (worse)
-                        </Box>
-                      </>
-                    )}
-                  </Box>
-                </Box>
-                <Box role="cell">
-                  <CompositionBar
-                    {...c}
-                    width={120}
-                    label={`${c.better} lower, ${c.worse} higher, ${c.unchanged} unchanged`}
-                  />
-                </Box>
+              <Box>
+                <TupleBadge
+                  tupleIndex={t.tupleIndex}
+                  maxTupleIndex={maxTupleIndex}
+                />
+              </Box>
+              <Box sx={{minWidth: 0}}>
                 <Box
-                  role="cell"
-                  className="hide-sm"
+                  title={names.join(', ')}
                   sx={{
-                    textAlign: 'right',
+                    fontWeight: WEIGHT.semibold,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
-                    color: COLOR.textTertiary,
-                    ...TABULAR,
                   }}>
-                  {precise(t.srcTotal)}
-                  <Box
-                    component="span"
-                    aria-label="to"
-                    sx={{mx: 0.5, color: COLOR.textDecorative}}>
-                    →
-                  </Box>
-                  <Box
-                    component="b"
-                    sx={{
-                      color: COLOR.textPrimary,
-                      fontWeight: WEIGHT.semibold,
-                    }}>
-                    {precise(t.dstTotal)}
-                  </Box>
+                  {names.slice(0, NAMES_SHOWN).join(', ')}
+                  {more > 0 && ` +${more}`}
                 </Box>
-                <Box
-                  role="cell"
-                  className="hide-sm"
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-end',
-                    gap: 0.75,
-                  }}>
-                  <ChangeIcon delta={t.delta} tone={tone} />
-                  <PreciseNumber value={t.delta} highlight signed />
-                </Box>
-                <Box
-                  role="cell"
-                  className="hide-sm"
-                  sx={{display: showTraces ? 'block' : 'none'}}>
-                  <Sparkline
-                    width={110}
-                    points={trace}
-                    label={`Goal index ${t.tupleIndex}: objective over local-search time`}
-                  />
-                </Box>
-                <Box
-                  role="cell"
-                  className="go"
-                  aria-hidden
-                  sx={{
-                    display: 'flex',
-                    color: COLOR.textDecorative,
-                    transition: `color ${DURATION.fast}ms, transform ${DURATION.fast}ms`,
-                  }}>
-                  <ChevronRight size={16} />
+                <Box sx={{color: COLOR.textTertiary, fontSize: TEXT.xs}}>
+                  {plural(names.length, 'objective')}
+                  {t.changedCount > 0 && ` · ${t.changedCount} changed`}
                 </Box>
               </Box>
-            );
-          })}
-        </Box>
-      </>
+              <Box className="hide-sm">
+                <MixBar mix={tupleMix(t)} total={names.length} />
+              </Box>
+              <Values t={t} />
+              <Box className="hide-sm">
+                <Trend
+                  t={t}
+                  color={color}
+                  totals={stepTotals?.get(t.tupleIndex)}
+                  loading={moveSetDeltas.loading}
+                />
+              </Box>
+            </Box>
+          );
+        })}
+      </Box>
     );
   }
 
   return (
     <Paper variant="outlined" sx={{overflow: 'hidden', minWidth: 0}}>
       <SectionHeader
-        title="Objectives by tuple index"
-        meta="Highest priority first"
-        actions={
-          <Button
-            size="small"
-            variant="outlined"
-            component={Link}
-            href={coHref}>
-            Open Constraints & Objectives
-          </Button>
-        }
+        title="Priority ladder"
+        meta="Objectives are minimized in strict priority order"
       />
       {body}
-      {still.length > 0 && (
+      {s != null && s.tuples.length > 0 && (
         <Box
           sx={{
             display: 'flex',
             alignItems: 'center',
-            flexWrap: 'wrap',
-            columnGap: 1.5,
-            rowGap: 0.75,
+            gap: 1,
             px: 2,
             py: 1.25,
             borderTop: `1px solid ${COLOR.borderDefault}`,
             color: COLOR.textTertiary,
             fontSize: TEXT.xs,
           }}>
-          <Box
-            component="span"
-            sx={{display: 'inline-flex', alignItems: 'center', gap: 0.5}}>
-            <Box
-              component="span"
-              sx={{color: COLOR.textSecondary, fontWeight: WEIGHT.semibold}}>
-              Still above 0, unchanged
-            </Box>
-            <HintIcon
-              title="Objectives whose value is above 0 at Final and did not change from Initial: the usual place to start when asking why the solver left something unsolved."
-              label="Help: Still above 0, unchanged"
-            />
-          </Box>
-          {still.slice(0, STILL_SHOWN).map(o => (
-            <Box
-              key={o.id}
-              component="span"
-              sx={{display: 'inline-flex', alignItems: 'center', gap: 0.75}}>
-              <TupleBadge
-                tupleIndex={o.tupleIndex}
-                maxTupleIndex={maxTupleIndex}
-                hint={null}
-              />
-              <MuiLink
-                component={Link}
-                href={constraintsObjectivesHref(basePath, {
-                  dstBase: 'FINAL',
-                  name: o.name,
-                  expressionId: o.id,
-                })}
-                title={`Open ${o.name} on Constraints & Objectives`}
-                sx={{fontSize: TEXT.sm}}>
-                {o.name}
-              </MuiLink>
-              <Box
-                component="span"
-                sx={{color: COLOR.textPrimary, fontSize: TEXT.sm, ...TABULAR}}>
-                {precise(o.dstValue)}
-              </Box>
-            </Box>
-          ))}
-          {still.length > STILL_SHOWN && (
-            <MuiLink component={Link} href={coHref} sx={{fontSize: TEXT.sm}}>
-              +{still.length - STILL_SHOWN} more
+          <ChartLegend
+            payload={MIX.map(m => ({value: m.label, color: m.color}))}
+            sx={{p: 0}}
+          />
+          {s.tuples.length > MAX_ROWS && (
+            <MuiLink
+              component={Link}
+              href={constraintsObjectivesHref(basePath, {dstBase: 'FINAL'})}
+              sx={{ml: 'auto', fontSize: TEXT.xs}}>
+              All {s.tuples.length} priorities →
             </MuiLink>
           )}
         </Box>

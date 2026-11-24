@@ -2,14 +2,18 @@ import {describe, expect, it} from 'vitest';
 
 import {
   changedObjectiveNames,
-  profileTrace,
-  stillAboveZero,
+  moveSetDeltasFromRows,
   summarizeEvaluations,
+  thinSeries,
+  tupleMix,
+  tupleStepTotals,
 } from '@/lib/overview';
 import {
+  ColumnType,
   ExpressionType,
+  type ColumnDescription,
   type ExpressionResult,
-  type LocalSearchProfile,
+  type RowData,
 } from '@/lib/rebalancer-explorer-types';
 
 function objective(
@@ -39,6 +43,17 @@ function constraint(id: number, value: number): ExpressionResult {
 }
 
 describe('summarizeEvaluations', () => {
+  it('keeps the A and B values of every objective', () => {
+    const s = summarizeEvaluations([objective(1, 0, 5)], [objective(1, 0, 2)]);
+    expect(s.tuples[0].objectives[0]).toEqual({
+      id: 1,
+      name: 'obj_1',
+      changed: true,
+      srcValue: 5,
+      dstValue: 2,
+    });
+  });
+
   it('sums each tuple and counts improved, worse and unchanged objectives', () => {
     const src = [objective(1, 0, 5), objective(2, 1, 3), objective(3, 1, 0)];
     const dst = [objective(1, 0, 5), objective(2, 1, 2), objective(3, 1, 4)];
@@ -114,75 +129,96 @@ describe('changedObjectiveNames', () => {
   });
 });
 
-describe('stillAboveZero', () => {
-  it('lists unchanged objectives still above 0 at B, in tuple order', () => {
+describe('tupleMix', () => {
+  it('splits objectives into improved, regressed, unchanged non-zero and zero', () => {
     const src = [
-      objective(1, 1, 4),
-      objective(2, 0, 0),
-      objective(3, 0, 2),
-      objective(4, 1, 5),
-      objective(5, 2, -1),
+      objective(1, 0, 5),
+      objective(2, 0, 1),
+      objective(3, 0, 4),
+      objective(4, 0, 0),
+      objective(5, 0, 3),
     ];
     const dst = [
-      objective(1, 1, 4),
-      objective(2, 0, 0),
-      objective(3, 0, 2),
-      objective(4, 1, 3),
-      objective(5, 2, -1),
+      objective(1, 0, 2),
+      objective(2, 0, 3),
+      objective(3, 0, 4),
+      objective(4, 0, 0),
+      objective(5, 0, 0),
     ];
-    const rows = stillAboveZero(summarizeEvaluations(src, dst));
-    expect(rows.map(r => [r.id, r.tupleIndex, r.dstValue])).toEqual([
-      [3, 0, 2],
-      [1, 1, 4],
-    ]);
-  });
-
-  it('keeps the A and B values of every objective', () => {
-    const s = summarizeEvaluations([objective(1, 0, 5)], [objective(1, 0, 2)]);
-    expect(s.tuples[0].objectives[0]).toEqual({
-      id: 1,
-      name: 'obj_1',
-      changed: true,
-      srcValue: 5,
-      dstValue: 2,
+    const [t] = summarizeEvaluations(src, dst).tuples;
+    expect(tupleMix(t)).toEqual({
+      improved: 2,
+      regressed: 1,
+      unchangedNonzero: 1,
+      zero: 1,
     });
   });
 });
 
-describe('profileTrace', () => {
-  const profile: LocalSearchProfile = {
-    moveTypeNames: ['SINGLE'],
-    moveTypeEvents: [
-      {moveTypeIndex: 0, duration: 1, initialValue: 10, finalValue: 8},
-      {moveTypeIndex: 0, duration: 2, initialValue: 8, finalValue: 7},
-    ],
+function column(name: string): ColumnDescription {
+  return {name, type: ColumnType.DOUBLE, primaryKey: false, description: ''};
+}
+
+function row(...values: Array<number | string>): RowData {
+  return {
+    cells: values.map(v =>
+      typeof v === 'number' ? {doubleValue: v} : {stringValue: v},
+    ),
   };
+}
 
-  it('starts at the first initial value and accumulates time', () => {
-    expect(profileTrace(profile)).toEqual([
-      {t: 0, v: 10},
-      {t: 1, v: 8},
-      {t: 3, v: 7},
-    ]);
+describe('moveSetDeltasFromRows', () => {
+  const columns = [
+    column('MoveSet #'),
+    column('obj_1 (Δ)'),
+    column('obj_2 (Δ)'),
+    column('Object'),
+  ];
+
+  it('keeps one entry per move set, in move set order, in the order of the names', () => {
+    const rows = [
+      row(2, -1, 0.5, 'b'),
+      row(1, 3, -2, 'a1'),
+      row(1, 3, -2, 'a2'),
+    ];
+    expect(moveSetDeltasFromRows(columns, rows, ['obj_2', 'obj_1'])).toEqual({
+      names: ['obj_2', 'obj_1'],
+      sets: [
+        [-2, 3],
+        [0.5, -1],
+      ],
+    });
   });
 
-  it('thins long traces but keeps both ends', () => {
-    const long: LocalSearchProfile = {
-      moveTypeNames: ['SINGLE'],
-      moveTypeEvents: Array.from({length: 500}, (_, i) => ({
-        moveTypeIndex: 0,
-        duration: 1,
-        initialValue: 500 - i,
-        finalValue: 499 - i,
-      })),
-    };
-    const trace = profileTrace(long, 50);
-    expect(trace).toHaveLength(50);
-    expect(trace[0]).toEqual({t: 0, v: 500});
-    expect(trace[49]).toEqual({t: 500, v: 0});
+  it('fails when a name has no change column', () => {
+    expect(() => moveSetDeltasFromRows(columns, [], ['obj_3'])).toThrow(
+      'Move sets have no change column for obj_3',
+    );
   });
+});
 
-  it('is empty for a profile with no events', () => {
-    expect(profileTrace({moveTypeNames: [], moveTypeEvents: []})).toEqual([]);
+describe('tupleStepTotals', () => {
+  it('starts at the Initial total and adds each move set of the tuple', () => {
+    const src = [objective(1, 0, 10), objective(2, 0, 5), objective(3, 1, 0)];
+    const dst = [objective(1, 0, 7), objective(2, 0, 6), objective(3, 1, 0)];
+    const summary = summarizeEvaluations(src, dst);
+    const totals = tupleStepTotals(summary, {
+      names: ['obj_1', 'obj_2'],
+      sets: [
+        [-2, 0],
+        [-1, 1],
+      ],
+    });
+    expect(Array.from(totals.entries())).toEqual([[0, [15, 13, 13]]]);
+  });
+});
+
+describe('thinSeries', () => {
+  it('keeps short series and thins long ones, keeping both ends', () => {
+    expect(thinSeries([1, 2, 3], 5)).toEqual([1, 2, 3]);
+    const long = Array.from({length: 500}, (_, i) => i);
+    const thin = thinSeries(long, 50);
+    expect(thin).toHaveLength(50);
+    expect([thin[0], thin[49]]).toEqual([0, 499]);
   });
 });
