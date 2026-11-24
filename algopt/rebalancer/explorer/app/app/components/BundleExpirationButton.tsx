@@ -4,6 +4,7 @@ import {useEffect, useState} from 'react';
 
 import {
   Alert,
+  Box,
   Button,
   CircularProgress,
   Dialog,
@@ -17,7 +18,12 @@ import {
   Skeleton,
   Snackbar,
   TextField,
+  Tooltip,
+  useMediaQuery,
+  type Theme,
 } from '@mui/material';
+
+import Pill from '@/app/components/ui/Pill';
 
 import type {Handle} from '@/lib/rebalancer-explorer-types';
 import {
@@ -39,6 +45,9 @@ export default function BundleExpirationButton({handle}: {handle: Handle}) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
+  const fullScreen = useMediaQuery((theme: Theme) =>
+    theme.breakpoints.down('sm'),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -123,11 +132,22 @@ export default function BundleExpirationButton({handle}: {handle: Handle}) {
 
   return (
     <>
-      <span className="inline-flex items-center gap-2">
+      <Box
+        component="span"
+        sx={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 1,
+        }}>
         {loadingExpiration ? (
           <Skeleton width={160} />
         ) : loadError ? (
-          <span className="text-red-600 dark:text-red-400">Unavailable</span>
+          <Tooltip title="Could not load the expiration time">
+            <span>
+              <Pill tone="bad">Unavailable</Pill>
+            </span>
+          </Tooltip>
         ) : (
           <span>
             {expiresAt === 0
@@ -135,19 +155,28 @@ export default function BundleExpirationButton({handle}: {handle: Handle}) {
               : new Date((expiresAt ?? 0) * 1000).toLocaleString()}
           </span>
         )}
-        <Button size="small" variant="outlined" onClick={openDialog}>
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={openDialog}
+          sx={{whiteSpace: 'nowrap'}}>
           Extend expiration
         </Button>
-      </span>
-      <Dialog open={open} onClose={closeDialog} maxWidth="xs" fullWidth>
+      </Box>
+      <Dialog
+        open={open}
+        onClose={closeDialog}
+        maxWidth="xs"
+        fullWidth
+        fullScreen={fullScreen}>
         <DialogTitle>Extend Expiration</DialogTitle>
         <DialogContent>
-          <DialogContentText className="mb-3">
+          <DialogContentText sx={{mb: 2}}>
             Choose how many days to add to the current expiration, or keep this
             run permanently.
           </DialogContentText>
           {error != null && (
-            <Alert severity="error" className="mb-3">
+            <Alert severity="error" sx={{mb: 2}}>
               {error}
             </Alert>
           )}
@@ -164,7 +193,7 @@ export default function BundleExpirationButton({handle}: {handle: Handle}) {
             />
             {selected === 'days' && (
               <TextField
-                className="mb-2 ml-8"
+                sx={{mb: 1, ml: 4}}
                 label="Days to add"
                 type="number"
                 size="small"
