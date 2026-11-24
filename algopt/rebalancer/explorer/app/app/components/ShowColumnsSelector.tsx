@@ -5,7 +5,9 @@ import {useMemo} from 'react';
 import {Autocomplete, Chip, TextField} from '@mui/material';
 
 import {renderColumnTypeGroup} from '@/app/components/columnTypeGroup';
-import {AUTOCOMPLETE_WORD_BREAK_PROPS, CHIP_WORD_BREAK_SX} from '@/lib/format';
+import {TAG_CHIP_SX} from '@/app/components/ui/Tag';
+import {columnTypeInfo} from '@/lib/column-types';
+import {AUTOCOMPLETE_WORD_BREAK_PROPS} from '@/lib/format';
 import type {ColumnDescription} from '@/lib/rebalancer-explorer-types';
 import {ColumnType} from '@/lib/rebalancer-explorer-types';
 
@@ -14,31 +16,6 @@ interface ShowColumnsSelectorProps {
   groupByColumns: string[];
   showColumns: string[];
   onShowColumnsChange: (columns: string[]) => void;
-}
-
-function formatColumnType(type: ColumnType): string {
-  switch (type) {
-    case ColumnType.DIMENSION:
-      return 'Dimension';
-    case ColumnType.UTILIZATION:
-      return 'Utilization';
-    case ColumnType.ASSIGNMENT:
-      return 'Assignment';
-    case ColumnType.SCOPE:
-      return 'Scope';
-    case ColumnType.PARTITION:
-      return 'Partition';
-    case ColumnType.IDENTIFIER:
-      return 'Identifier';
-    case ColumnType.DOUBLE:
-      return 'Double';
-    case ColumnType.INTEGER:
-      return 'Integer';
-    case ColumnType.STRING:
-      return 'String';
-    default:
-      return 'Other';
-  }
 }
 
 export default function ShowColumnsSelector({
@@ -74,14 +51,14 @@ export default function ShowColumnsSelector({
     <Autocomplete
       multiple
       size="small"
-      sx={{flex: 1, minWidth: 280}}
+      sx={{flex: '2 1 280px', minWidth: 220}}
       options={options}
       value={selectedOptions}
       onChange={(_event, newValue) => {
         onShowColumnsChange(newValue.map(col => col.name));
       }}
       getOptionLabel={option => option.name}
-      groupBy={option => formatColumnType(option.type)}
+      groupBy={option => columnTypeInfo(option.type).full}
       renderGroup={renderColumnTypeGroup}
       isOptionEqualToValue={(option, value) => option.name === value.name}
       renderTags={(value, getTagProps) =>
@@ -92,7 +69,7 @@ export default function ShowColumnsSelector({
               key={key}
               label={option.name}
               size="small"
-              sx={CHIP_WORD_BREAK_SX}
+              sx={TAG_CHIP_SX}
               {...chipProps}
             />
           );

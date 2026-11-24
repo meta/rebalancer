@@ -1,6 +1,9 @@
 'use client';
 
-import {Box, Typography} from '@mui/material';
+import {Box} from '@mui/material';
+
+import Tag from '@/app/components/ui/Tag';
+import {COLOR, WEIGHT} from '@/lib/ui-tokens';
 
 import {precise} from '@/lib/format';
 import type {
@@ -58,22 +61,17 @@ export function PropertyList({properties}: {properties: ExpressionProperty[]}) {
   }
 
   return (
+    // Parameters as small chips under the node: the name, then the value.
     <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5}}>
       {properties.map(prop => (
-        <Typography
-          key={prop.name}
-          variant="caption"
-          sx={{
-            px: 1,
-            py: 0.25,
-            borderRadius: 1,
-            backgroundColor: '#f0f0f0',
-            fontSize: '0.75rem',
-            overflowWrap: 'anywhere',
-            wordBreak: 'break-word',
-          }}>
-          {prop.name}: {renderPropertyValue(prop.value)}
-        </Typography>
+        <Tag key={prop.name} small>
+          <Box
+            component="b"
+            sx={{fontWeight: WEIGHT.semibold, color: COLOR.textTertiary}}>
+            {prop.name}
+          </Box>
+          {renderPropertyValue(prop.value)}
+        </Tag>
       ))}
     </Box>
   );

@@ -1,10 +1,11 @@
 'use client';
 
-import Close from '@mui/icons-material/Close';
 import {IconButton, Tooltip} from '@mui/material';
+import {X} from 'lucide-react';
 
 import type {ColumnDescription} from '@/lib/rebalancer-explorer-types';
 import {ColumnType} from '@/lib/rebalancer-explorer-types';
+import {ICON_MUTED} from '@/lib/ui-tokens';
 
 // Show/hide backed by the `showColumns` list. A column is hideable unless it's
 // the entity-name column or a group-by column (those always show). An empty list
@@ -63,9 +64,10 @@ export function ColumnHideButton({
             e.stopPropagation();
             onHide();
           }}
-          sx={{p: 0.25, flexShrink: 0, opacity: 0.3, '&:hover': {opacity: 1}}}
+          className="col-action"
+          sx={{p: 0.25, flexShrink: 0, color: ICON_MUTED}}
           aria-label={label}>
-          <Close sx={{fontSize: 16}} />
+          <X size={14} />
         </IconButton>
       </span>
     </Tooltip>

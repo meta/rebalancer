@@ -2,11 +2,13 @@
 
 import {useEffect, useState} from 'react';
 
-import FirstPage from '@mui/icons-material/FirstPage';
-import KeyboardArrowLeft from '@mui/icons-material/KeyboardArrowLeft';
-import KeyboardArrowRight from '@mui/icons-material/KeyboardArrowRight';
-import LastPage from '@mui/icons-material/LastPage';
 import {Box, IconButton, TextField, Typography} from '@mui/material';
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+} from 'lucide-react';
 
 // Props are the subset of MUI's TablePaginationActionsProps that we use; MUI
 // passes all of these to whatever component is given as `ActionsComponent`.
@@ -62,14 +64,14 @@ export default function TablePaginationActions({
         disabled={page <= 0}
         aria-label="First page"
         size="small">
-        <FirstPage />
+        <ChevronsLeft size={16} />
       </IconButton>
       <IconButton
         onClick={event => onPageChange(event, page - 1)}
         disabled={page <= 0}
         aria-label="Previous page"
         size="small">
-        <KeyboardArrowLeft />
+        <ChevronLeft size={16} />
       </IconButton>
       <Box sx={{display: 'flex', alignItems: 'center', gap: 0.5, mx: 0.5}}>
         <TextField
@@ -88,10 +90,14 @@ export default function TablePaginationActions({
             htmlInput: {
               min: 1,
               max: lastPage + 1,
-              style: {textAlign: 'center', padding: '4px 6px'},
+              style: {textAlign: 'center'},
             },
           }}
-          sx={{width: 64}}
+          sx={{
+            width: 64,
+            '& .MuiInputBase-root': {height: 32, typography: 'body2'},
+            '& input': {px: 0.75, py: 0},
+          }}
         />
         <Typography
           variant="body2"
@@ -105,14 +111,14 @@ export default function TablePaginationActions({
         disabled={page >= lastPage}
         aria-label="Next page"
         size="small">
-        <KeyboardArrowRight />
+        <ChevronRight size={16} />
       </IconButton>
       <IconButton
         onClick={event => onPageChange(event, lastPage)}
         disabled={page >= lastPage}
         aria-label="Last page"
         size="small">
-        <LastPage />
+        <ChevronsRight size={16} />
       </IconButton>
     </Box>
   );

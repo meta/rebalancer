@@ -3,9 +3,11 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 
 import {Autocomplete, Chip, TextField} from '@mui/material';
+
+import {TAG_CHIP_SX} from '@/app/components/ui/Tag';
 import type {ValueEditorProps} from 'react-querybuilder';
 
-import {AUTOCOMPLETE_WORD_BREAK_PROPS, CHIP_WORD_BREAK_SX} from '@/lib/format';
+import {AUTOCOMPLETE_WORD_BREAK_PROPS} from '@/lib/format';
 import {fetchTypeahead} from '@/lib/rebalancer-explorer-api';
 
 import {OPERATOR_TO_COMPARATOR} from './EntityFilter.transform';
@@ -121,7 +123,7 @@ export function TypeaheadValueEditor(props: ValueEditorProps) {
                 key={key}
                 label={option}
                 size="small"
-                sx={CHIP_WORD_BREAK_SX}
+                sx={TAG_CHIP_SX}
                 {...tagProps}
               />
             );

@@ -5,7 +5,9 @@ import {useMemo} from 'react';
 import {Autocomplete, Chip, TextField} from '@mui/material';
 
 import {renderColumnTypeGroup} from '@/app/components/columnTypeGroup';
-import {AUTOCOMPLETE_WORD_BREAK_PROPS, CHIP_WORD_BREAK_SX} from '@/lib/format';
+import {TAG_CHIP_SX} from '@/app/components/ui/Tag';
+import {columnTypeInfo} from '@/lib/column-types';
+import {AUTOCOMPLETE_WORD_BREAK_PROPS} from '@/lib/format';
 import type {ColumnDescription} from '@/lib/rebalancer-explorer-types';
 import {ColumnType} from '@/lib/rebalancer-explorer-types';
 
@@ -19,23 +21,6 @@ const STRING_LIKE_TYPES = new Set([
 
 function isStringLikeColumn(type: ColumnType): boolean {
   return STRING_LIKE_TYPES.has(type);
-}
-
-function formatColumnType(type: ColumnType): string {
-  switch (type) {
-    case ColumnType.ASSIGNMENT:
-      return 'Assignment';
-    case ColumnType.ENTITY_NAME:
-      return 'Entity Name';
-    case ColumnType.SCOPE:
-      return 'Scope';
-    case ColumnType.PARTITION:
-      return 'Partition';
-    case ColumnType.STRING:
-      return 'String';
-    default:
-      return 'Other';
-  }
 }
 
 interface GroupBySelectorProps {
@@ -70,14 +55,14 @@ export default function GroupBySelector({
     <Autocomplete
       multiple
       size="small"
-      sx={{flex: 1, minWidth: 240, maxWidth: 360}}
+      sx={{flex: '1 1 220px', minWidth: 220, maxWidth: 420}}
       options={options}
       value={selectedOptions}
       onChange={(_event, newValue) => {
         onGroupByChange(newValue.map(col => col.name));
       }}
       getOptionLabel={option => option.name}
-      groupBy={option => formatColumnType(option.type)}
+      groupBy={option => columnTypeInfo(option.type).full}
       renderGroup={renderColumnTypeGroup}
       isOptionEqualToValue={(option, value) => option.name === value.name}
       renderTags={(value, getTagProps) =>
@@ -88,7 +73,7 @@ export default function GroupBySelector({
               key={key}
               label={option.name}
               size="small"
-              sx={CHIP_WORD_BREAK_SX}
+              sx={TAG_CHIP_SX}
               {...chipProps}
             />
           );

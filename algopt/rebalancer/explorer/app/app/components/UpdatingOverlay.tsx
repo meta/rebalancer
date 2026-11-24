@@ -1,45 +1,38 @@
 'use client';
 
-import {Box, CircularProgress} from '@mui/material';
-import {alpha, lighten} from '@mui/material/styles';
+import {Box} from '@mui/material';
+import {keyframes} from '@mui/material/styles';
 
-// Shown over a table while it reloads after a columns/filter/grouping/page
-// change. The old rows stay dimmed underneath, so it reads as "updating", not
-// frozen.
-export default function UpdatingOverlay() {
+import {LoadBar} from '@/app/components/ui/StateViews';
+import {COLOR, DURATION, radius} from '@/lib/ui-tokens';
+
+const dim = keyframes`from { opacity: 0; } to { opacity: 1; }`;
+
+// While a table or section reloads after a columns, filter, grouping or page
+// change: after 120 ms the old content dims to 60% and the 2px progress bar
+// runs along the top of the window. Clicks pass through, so the controls stay
+// usable during a refetch.
+export default function UpdatingOverlay({
+  label = 'Updating data…',
+}: {
+  label?: string;
+  /** Kept for callers; the progress bar is always at the top of the window. */
+  floating?: boolean;
+}) {
   return (
     <Box
       role="status"
+      aria-label={label}
       sx={{
         position: 'absolute',
         inset: 0,
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        pt: 4,
-        bgcolor: theme => alpha(theme.palette.background.paper, 0.7),
+        borderRadius: radius('lg'),
+        bgcolor: `color-mix(in srgb, ${COLOR.bgCanvas} 40%, transparent)`,
         zIndex: 10,
-        // Dim, but let clicks through so controls stay usable during a refetch.
         pointerEvents: 'none',
+        animation: `${dim} ${DURATION.base}ms ${DURATION.fast}ms both`,
       }}>
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5,
-          px: 3,
-          py: 1.5,
-          bgcolor: theme => lighten(theme.palette.primary.main, 0.88),
-          color: 'primary.dark',
-          border: 1,
-          borderColor: 'primary.main',
-          borderRadius: 2,
-          boxShadow: 3,
-          fontWeight: 600,
-        }}>
-        <CircularProgress size={20} aria-hidden />
-        Updating data...
-      </Box>
+      <LoadBar />
     </Box>
   );
 }

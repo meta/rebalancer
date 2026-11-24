@@ -8,21 +8,6 @@ import type {
 } from '@/lib/rebalancer-explorer-types';
 import {ColumnType, Comparator} from '@/lib/rebalancer-explorer-types';
 
-export const COLUMN_TYPE_GROUP_LABEL: Partial<Record<ColumnType, string>> = {
-  [ColumnType.DIMENSION]: 'Dimensions',
-  [ColumnType.UTILIZATION]: 'Utilizations',
-  [ColumnType.PARTITION]: 'Partitions',
-  [ColumnType.ASSIGNMENT]: 'Assignments',
-};
-
-export const GROUP_ORDER = [
-  'Other',
-  'Dimensions',
-  'Utilizations',
-  'Partitions',
-  'Assignments',
-];
-
 export const STRING_OPERATORS: FullOperator[] = [
   {name: 'in', value: 'in', label: 'is any of'},
   {name: 'regex', value: 'regex', label: 'matches regex'},

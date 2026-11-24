@@ -15,6 +15,7 @@ import {TreeItem} from '@mui/x-tree-view/TreeItem';
 import type {TreeItemProps} from '@mui/x-tree-view/TreeItem';
 
 import {precise} from '@/lib/format';
+import {COLOR, CONTROL, radius, TABULAR, TEXT, WEIGHT} from '@/lib/ui-tokens';
 import type {
   OrderDirection,
   TreeNodeOrderMetric,
@@ -34,6 +35,81 @@ import {NodeDelta} from './NodeDelta';
 import {NodeSearchInput} from './NodeSearchInput';
 import {PropertyList} from './PropertyList';
 import {TreeDataContext} from './TreeDataContext';
+
+// Small standard select for the per-node "Order by" controls.
+const SORT_SELECT_SX = {
+  minWidth: 140,
+  height: CONTROL.sm,
+  fontSize: TEXT.xs,
+  color: COLOR.textPrimary,
+  '& .MuiSelect-select': {py: 0.25, pl: 1},
+} as const;
+
+/**
+ * The operator glyph of an expression node: mono, in the alternative
+ * (structure) color.
+ */
+function operatorGlyph(type: string): string {
+  if (/Sum/i.test(type)) {
+    return 'Σ';
+  }
+  if (/Product|Multiply/i.test(type)) {
+    return '×';
+  }
+  if (/Max|Largest/i.test(type)) {
+    return 'max';
+  }
+  if (/Min|Smallest/i.test(type)) {
+    return 'min';
+  }
+  if (/Power|Exp/i.test(type)) {
+    return 'xⁿ';
+  }
+  if (/Lookup/i.test(type)) {
+    return '[ ]';
+  }
+  if (/Partition|Group/i.test(type)) {
+    return '{ }';
+  }
+  if (/Vector/i.test(type)) {
+    return 'v';
+  }
+  if (/Variable/i.test(type)) {
+    return 'x';
+  }
+  if (/Piecewise|Step|Threshold/i.test(type)) {
+    return 'f';
+  }
+  if (/Constant/i.test(type)) {
+    return 'c';
+  }
+  return type.slice(0, 2).toLowerCase();
+}
+
+function OperatorIcon({type}: {type: string}) {
+  return (
+    <Box
+      component="span"
+      aria-hidden
+      sx={{
+        flexShrink: 0,
+        minWidth: 22,
+        height: 18,
+        px: 0.5,
+        display: 'inline-grid',
+        placeItems: 'center',
+        borderRadius: radius('xs'),
+        bgcolor: COLOR.altBg,
+        color: COLOR.altText,
+        fontFamily: 'var(--font-mono)',
+        fontSize: TEXT['2xs'],
+        fontWeight: WEIGHT.bold,
+        lineHeight: 1,
+      }}>
+      {operatorGlyph(type)}
+    </Box>
+  );
+}
 
 export const CustomTreeItem = forwardRef<HTMLLIElement, TreeItemProps>(
   function CustomTreeItem(props, ref) {
@@ -109,11 +185,7 @@ export const CustomTreeItem = forwardRef<HTMLLIElement, TreeItemProps>(
                           currentSort.direction,
                         )
                       }
-                      sx={{
-                        fontSize: '0.7rem',
-                        minWidth: 120,
-                        '& .MuiSelect-select': {py: 0.25},
-                      }}>
+                      sx={SORT_SELECT_SX}>
                       <MenuItem value={0}>Source value</MenuItem>
                       <MenuItem value={1}>Destination value</MenuItem>
                       <MenuItem value={2}>Delta value</MenuItem>
@@ -128,11 +200,7 @@ export const CustomTreeItem = forwardRef<HTMLLIElement, TreeItemProps>(
                           Number(e.target.value) as OrderDirection,
                         )
                       }
-                      sx={{
-                        fontSize: '0.7rem',
-                        minWidth: 100,
-                        '& .MuiSelect-select': {py: 0.25},
-                      }}>
+                      sx={{...SORT_SELECT_SX, minWidth: 110}}>
                       <MenuItem value={0}>Ascending</MenuItem>
                       <MenuItem value={1}>Descending</MenuItem>
                     </Select>
@@ -213,22 +281,45 @@ export const CustomTreeItem = forwardRef<HTMLLIElement, TreeItemProps>(
         label={
           <Box>
             {/* Node heading + inline search */}
-            <Box sx={{display: 'flex', alignItems: 'center', py: 0.5}}>
-              <Typography
-                variant="body2"
-                sx={{fontWeight: 700, fontSize: '0.8125rem', mr: 1}}>
-                {coeff !== 1 && `${precise(coeff)} × `}
-                {node.expressionType.toUpperCase()}
-              </Typography>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                columnGap: 0.75,
+                py: 0.5,
+              }}>
+              <OperatorIcon type={node.expressionType} />
+              <Box
+                component="span"
+                sx={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: TEXT.xs,
+                  color: COLOR.altText,
+                }}>
+                {node.expressionType}
+              </Box>
+              {coeff !== 1 && (
+                <Box
+                  component="span"
+                  title="Coefficient in its parent"
+                  sx={{
+                    px: 0.5,
+                    borderRadius: radius('xs'),
+                    bgcolor: COLOR.altBg,
+                    color: COLOR.altText,
+                    fontSize: TEXT['2xs'],
+                    fontWeight: WEIGHT.semibold,
+                    ...TABULAR,
+                  }}>
+                  × {precise(coeff).replace(/-/g, '\u2212')}
+                </Box>
+              )}
               <Typography
                 component="span"
-                variant="body2"
-                sx={{
-                  fontWeight: 600,
-                  fontVariantNumeric: 'tabular-nums',
-                  fontSize: '0.8125rem',
-                }}>
-                {precise(sourceValue)}
+                variant="subtitle2"
+                sx={{ml: 0.75, color: COLOR.textTertiary, ...TABULAR}}>
+                {precise(sourceValue).replace(/-/g, '\u2212')}
               </Typography>
               <NodeDelta
                 sourceValue={sourceValue}
@@ -246,8 +337,7 @@ export const CustomTreeItem = forwardRef<HTMLLIElement, TreeItemProps>(
             {/* Description */}
             {node.description !== '' && (
               <Box
-                color="text.secondary"
-                sx={{fontWeight: 600}}
+                sx={{color: COLOR.textSecondary}}
                 onClick={e => e.stopPropagation()}>
                 <CollapsibleText text={node.description} clampLines={3} />
               </Box>

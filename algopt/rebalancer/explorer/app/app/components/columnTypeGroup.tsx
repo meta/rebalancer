@@ -18,11 +18,8 @@ export function renderColumnTypeGroup(params: AutocompleteRenderGroupParams) {
           px: 2,
           pt: 1,
           pb: 0.5,
-          fontSize: '0.7rem',
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-          color: 'text.secondary',
+          typography: 'overline',
+          lineHeight: 1.5,
         }}>
         {params.group}
       </Box>

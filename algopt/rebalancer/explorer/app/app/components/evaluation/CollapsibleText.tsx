@@ -1,8 +1,10 @@
 'use client';
 
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useId, useRef, useState} from 'react';
 
 import {Box, Typography} from '@mui/material';
+
+import {useClipStoreContext, useIsClipped} from './useClipObserver';
 
 const WRAP_STYLES = {
   overflowWrap: 'anywhere',
@@ -22,17 +24,33 @@ export default function CollapsibleText({
   clampLines?: number;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [clipped, setClipped] = useState(false);
+  const [localClipped, setLocalClipped] = useState(false);
   const textRef = useRef<HTMLElement | null>(null);
+  const id = useId();
+  // Tables share one observer (see useClipObserver); text elsewhere
+  // measures itself.
+  const store = useClipStoreContext();
+  const useShared = store != null;
+  const sharedClipped = useIsClipped(useShared ? store : null, id);
+
+  useEffect(() => {
+    const el = textRef.current;
+    if (el == null || !useShared || store == null) {
+      return;
+    }
+    // Re-registering on a new text re-measures it: a sorted row can show a
+    // different text at the same width, which ResizeObserver would miss.
+    return store.observe(el, id);
+  }, [useShared, store, id, text]);
 
   // Show the toggle only when the collapsed text is actually clipped.
   useEffect(() => {
     const el = textRef.current;
-    if (el == null) {
+    if (el == null || useShared) {
       return;
     }
     const measure = () => {
-      setClipped(
+      setLocalClipped(
         clampLines != null
           ? el.scrollHeight > el.clientHeight
           : el.scrollWidth > el.clientWidth,
@@ -42,7 +60,9 @@ export default function CollapsibleText({
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [text, clampLines, expanded]);
+  }, [text, clampLines, expanded, useShared]);
+
+  const clipped = useShared ? sharedClipped : localClipped;
 
   const collapsedSx =
     clampLines != null
@@ -66,7 +86,6 @@ export default function CollapsibleText({
         }}
         variant="body2"
         sx={{
-          fontSize: '0.8125rem',
           ...WRAP_STYLES,
           ...(expanded ? {} : collapsedSx),
         }}>
@@ -82,8 +101,8 @@ export default function CollapsibleText({
           }}
           sx={{
             cursor: 'pointer',
+            typography: 'caption',
             color: 'primary.main',
-            fontSize: '0.75rem',
             '&:hover': {textDecoration: 'underline'},
           }}>
           {expanded ? 'Show less' : 'Show more'}

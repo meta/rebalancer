@@ -22,12 +22,14 @@ import type {Handle} from '@/lib/rebalancer-explorer-types';
 import {fetchHandle} from '@/lib/rebalancer-explorer-api';
 
 interface RebalancerHandleContextValue {
+  runId: string | null;
   handle: Handle | null;
   loading: boolean;
   error: string | null;
 }
 
 const RebalancerHandleContext = createContext<RebalancerHandleContextValue>({
+  runId: null,
   handle: null,
   loading: true,
   error: null,
@@ -73,7 +75,7 @@ export function RebalancerHandleProvider({
   }, [runId]);
 
   return (
-    <RebalancerHandleContext.Provider value={{handle, loading, error}}>
+    <RebalancerHandleContext.Provider value={{runId, handle, loading, error}}>
       {children}
     </RebalancerHandleContext.Provider>
   );

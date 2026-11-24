@@ -2,7 +2,7 @@
 
 import {useCallback, useMemo, useState} from 'react';
 
-import {IconButton, Tooltip} from '@mui/material';
+import {Box, IconButton, Tooltip} from '@mui/material';
 import {QueryBuilderMaterial} from '@react-querybuilder/material';
 import {ClipboardPaste, Copy} from 'lucide-react';
 import type {
@@ -15,19 +15,46 @@ import {QueryBuilder} from 'react-querybuilder';
 import 'react-querybuilder/dist/query-builder.css';
 
 import {useRebalancerHandle} from '@/lib/contexts/RebalancerHandleContext';
+import {COLUMN_GROUP_ORDER, columnTypeInfo} from '@/lib/column-types';
 import {isNumericColumn} from '@/lib/format';
+import {DIVIDER, SURFACE_2} from '@/lib/ui-tokens';
 import type {ColumnDescription, Filter} from '@/lib/rebalancer-explorer-types';
 
 import {AddFilterButton, RemoveRuleButton} from './EntityFilter.actions';
 import {
-  COLUMN_TYPE_GROUP_LABEL,
-  GROUP_ORDER,
   NUMERIC_OPERATORS,
   STRING_OPERATORS,
   filtersToQuery,
   queryToFilters,
 } from './EntityFilter.transform';
 import {TypeaheadValueEditor} from './EntityFilter.TypeaheadValueEditor';
+
+// react-querybuilder styling, scoped so it outranks query-builder.css
+// without !important: no box until there is a rule, then the rules sit in a
+// light panel with 32px controls.
+const FILTER_SX = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 1,
+  '& .ruleGroup': {
+    background: 'transparent',
+    border: 0,
+    borderRadius: 0,
+    p: 0,
+    gap: 1,
+  },
+  '& .ruleGroup-header': {gap: 1},
+  '& .ruleGroup-body:not(:empty)': {
+    bgcolor: SURFACE_2,
+    border: `1px solid ${DIVIDER}`,
+    borderRadius: 1,
+    p: 1,
+    gap: 1,
+  },
+  '& .rule': {gap: 1, flexWrap: 'wrap', alignItems: 'center'},
+  '& .rule .MuiInputBase-root': {minHeight: 32, typography: 'body2'},
+  '& .rule .MuiSelect-select': {py: 0.5},
+} as const;
 
 interface EntityFilterProps {
   columnDescriptions: ColumnDescription[];
@@ -77,7 +104,7 @@ export default function EntityFilter({
   const fields: OptionGroup<Field>[] = useMemo(() => {
     const groups = new Map<string, Field[]>();
     for (const col of columnDescriptions) {
-      const groupLabel = COLUMN_TYPE_GROUP_LABEL[col.type] ?? 'Other';
+      const groupLabel = columnTypeInfo(col.type).group;
       let group = groups.get(groupLabel);
       if (group == null) {
         group = [];
@@ -90,7 +117,7 @@ export default function EntityFilter({
         datatype: isNumericColumn(col.type) ? 'number' : 'text',
       });
     }
-    return GROUP_ORDER.filter(label => groups.has(label)).map(label => ({
+    return COLUMN_GROUP_ORDER.filter(label => groups.has(label)).map(label => ({
       label,
       options: groups.get(label)!,
     }));
@@ -171,8 +198,8 @@ export default function EntityFilter({
   }, [onFiltersChange]);
 
   return (
-    <div className="flex items-start gap-2">
-      <div className="flex-1">
+    <Box sx={FILTER_SX}>
+      <Box sx={{flex: 1, minWidth: 0}}>
         <QueryBuilderMaterial>
           <QueryBuilder
             fields={fields}
@@ -192,15 +219,16 @@ export default function EntityFilter({
             disabled={columnDescriptions.length === 0}
           />
         </QueryBuilderMaterial>
-      </div>
-      <div className="flex gap-0.5 pt-0.5">
+      </Box>
+      <Box sx={{display: 'flex', gap: 0.25, flexShrink: 0}}>
         <Tooltip title={copyTooltip}>
           <span>
             <IconButton
               size="small"
+              aria-label="Copy filters as JSON"
               onClick={handleCopy}
               disabled={filters.length === 0}>
-              <Copy className="size-5" />
+              <Copy size={16} />
             </IconButton>
           </span>
         </Tooltip>
@@ -208,13 +236,14 @@ export default function EntityFilter({
           <span>
             <IconButton
               size="small"
+              aria-label="Paste filters"
               onClick={handlePaste}
               disabled={columnDescriptions.length === 0}>
-              <ClipboardPaste className="size-5" />
+              <ClipboardPaste size={16} />
             </IconButton>
           </span>
         </Tooltip>
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }
