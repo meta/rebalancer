@@ -8,6 +8,7 @@ import {useSearchParams} from 'next/navigation';
 import EntityFacets from '@/app/components/entity/EntityFacets';
 import EntityList from '@/app/components/entity/EntityList';
 import FlowsCard from '@/app/components/entity/FlowsCard';
+import useGroupSizes from '@/app/components/entity/useGroupSizes';
 import {
   searchParamsFromViewState,
   viewStateFromSearchParams,
@@ -42,12 +43,13 @@ import type {
   Result,
   RowData,
 } from '@/lib/rebalancer-explorer-types';
-import {flows, itemMoves, type Flow} from '@/lib/run-changes';
+import {flows, itemMoves, movedPerGroup, type Flow} from '@/lib/run-changes';
 import {useUrlStateSync} from '@/lib/url-state';
 
 import MetricDistributionSection from './MetricDistributionSection';
 
-type EntityKind = 'object' | 'container' | 'scope' | 'dynamic dimension';
+type EntityKind =
+  'object' | 'container' | 'scope' | 'dynamic dimension' | 'partition';
 
 // An object's 0/1 column that marks it fixed in place.
 const MOVABLE_COLUMN = 'is_movable';
@@ -84,6 +86,8 @@ function kindHelp(kind: EntityKind, m: ProblemMetadata): string {
       return `A grouping of ${m.containerName} rows. Each item's utilization sums its ${m.containerName} rows.`;
     case 'dynamic dimension':
       return `A value looked up per ${m.objectName} and scope item, so it changes when the ${m.objectName} moves.`;
+    case 'partition':
+      return `Groups of ${m.objectName} rows that share a value. Spread and diversity goals count a group's rows per scope item.`;
   }
 }
 
@@ -122,6 +126,8 @@ const DEFAULT_LIST_WIDTH = 1100;
 const LIST_CHROME = 4;
 const MOVES_WIDTH = 116;
 const CHANGE_WIDTH = 232;
+// A partition's Members and Moved columns.
+const GROUP_COUNTS_WIDTH = 96 + 120;
 
 function useElementWidth() {
   const [el, setEl] = useState<HTMLElement | null>(null);
@@ -140,7 +146,14 @@ function useElementWidth() {
   return {ref: setEl, width};
 }
 
-export default function EntityView({entityName}: {entityName: string}) {
+export default function EntityView({
+  entityName,
+  partition = null,
+}: {
+  entityName: string;
+  // Shows the groups of this partition: the object rows grouped by it.
+  partition?: string | null;
+}) {
   const {
     handle,
     runId,
@@ -170,11 +183,19 @@ export default function EntityView({entityName}: {entityName: string}) {
 
   useUrlStateSync(() => searchParamsFromViewState(viewState), [viewState]);
 
-  const kind = kindOf(metadata, entityName);
+  const kind = partition != null ? 'partition' : kindOf(metadata, entityName);
+  // A partition page is always grouped by its partition.
+  const groupBy = useMemo(
+    () => (partition != null ? [partition] : viewState.groupByColumns),
+    [partition, viewState.groupByColumns],
+  );
   const {moves, loading: movesLoading} = useRunMoves(
     handle,
     metadata,
-    kind === 'object' || kind === 'container' || kind === 'scope',
+    kind === 'object' ||
+      kind === 'container' ||
+      kind === 'scope' ||
+      kind === 'partition',
   );
   // The scope (or the container) whose items the moves are counted on.
   const moveKey =
@@ -189,6 +210,15 @@ export default function EntityView({entityName}: {entityName: string}) {
         ? itemMoves(moves.moved, moveKey)
         : null,
     [moves, moveKey],
+  );
+
+  // Moved objects per group of the partition.
+  const groupMoved = useMemo(
+    () =>
+      moves?.moved != null && partition != null
+        ? movedPerGroup(moves.moved, partition)
+        : null,
+    [moves, partition],
   );
 
   // Flows between containers (objects and containers) or the scope's items.
@@ -211,37 +241,45 @@ export default function EntityView({entityName}: {entityName: string}) {
     if (kind === 'object') {
       return Array.from(moves.moved.keys());
     }
-    return itemMoveCounts != null && itemMoveCounts.size > 0
-      ? Array.from(itemMoveCounts.keys())
+    const changed = groupMoved ?? itemMoveCounts;
+    return changed != null && changed.size > 0
+      ? Array.from(changed.keys())
       : null;
-  }, [moves, kind, itemMoveCounts]);
+  }, [moves, kind, itemMoveCounts, groupMoved]);
   // On by default when the run has changed rows.
   const movedOnly = (viewState.movedOnly ?? true) && movedNames != null;
   const waitingForMoves = viewState.movedOnly !== false && movesLoading;
 
-  // A scope's item count, for "All N".
-  const [scopeTotal, setScopeTotal] = useState<{
-    entity: string;
+  // A scope's item count or a partition's group count, for "All N".
+  const [entityTotal, setEntityTotal] = useState<{
+    key: string;
     n: number;
   } | null>(null);
+  const totalKey =
+    kind === 'scope' || kind === 'partition' ? (partition ?? entityName) : null;
   useEffect(() => {
-    if (handle == null || kind !== 'scope') {
+    if (handle == null || totalKey == null) {
       return;
     }
     let cancelled = false;
-    fetchEntityData(handle, {entity: entityName, page: {offset: 0, limit: 1}})
+    fetchEntityData(handle, {
+      entity: entityName,
+      ...(partition != null ? {group: {columns: [partition]}} : {}),
+      page: {offset: 0, limit: 1},
+    })
       .then(({result}) => {
         if (!cancelled) {
-          setScopeTotal({entity: entityName, n: result.totalCount});
+          setEntityTotal({key: totalKey, n: result.totalCount});
         }
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [handle, kind, entityName]);
+  }, [handle, totalKey, entityName, partition]);
 
   const pkColumn =
+    partition ??
     columnDescriptions?.find(c => c.primaryKey)?.name ??
     (kind === 'dynamic dimension' && metadata != null
       ? metadata.objectName
@@ -251,7 +289,7 @@ export default function EntityView({entityName}: {entityName: string}) {
   // A new query (not a new page or order) picks the automatic columns again.
   const queryKey = JSON.stringify([
     viewState.filters,
-    viewState.groupByColumns,
+    groupBy,
     search,
     movedOnly,
   ]);
@@ -261,17 +299,20 @@ export default function EntityView({entityName}: {entityName: string}) {
   const byActivity = useMemo(() => {
     if (
       !movedOnly ||
-      itemMoveCounts == null ||
+      (itemMoveCounts == null && groupMoved == null) ||
       movedNames == null ||
       viewState.orderColumn != null ||
       viewState.filters.length > 0 ||
       search !== '' ||
-      viewState.groupByColumns.length > 0
+      (partition == null && groupBy.length > 0)
     ) {
       return null;
     }
     const activity = (n: string) => {
-      const m = itemMoveCounts.get(n);
+      if (groupMoved != null) {
+        return groupMoved.get(n) ?? 0;
+      }
+      const m = itemMoveCounts?.get(n);
       return m == null ? 0 : m.out + m.in;
     };
     return [...movedNames].sort(
@@ -280,11 +321,13 @@ export default function EntityView({entityName}: {entityName: string}) {
   }, [
     movedOnly,
     itemMoveCounts,
+    groupMoved,
     movedNames,
     viewState.orderColumn,
     viewState.filters,
     search,
-    viewState.groupByColumns,
+    partition,
+    groupBy,
   ]);
 
   const seqRef = useRef(0);
@@ -326,17 +369,14 @@ export default function EntityView({entityName}: {entityName: string}) {
           pageNames != null
             ? {offset: 0, limit: viewState.limit}
             : {offset: viewState.offset, limit: viewState.limit},
-        group:
-          viewState.groupByColumns.length > 0
-            ? {columns: viewState.groupByColumns}
-            : undefined,
+        group: groupBy.length > 0 ? {columns: groupBy} : undefined,
       });
       if (seq !== seqRef.current) {
         return;
       }
       let result = response.result;
       if (pageNames != null && byActivity != null) {
-        const pk = result.columns.findIndex(c => c.primaryKey);
+        const pk = result.columns.findIndex(c => c.name === pkColumn);
         const rank = new Map(pageNames.map((n, i) => [n, i]));
         const at = (r: RowData) =>
           rank.get(r.cells[pk]?.stringValue ?? '') ?? pageNames.length;
@@ -347,7 +387,7 @@ export default function EntityView({entityName}: {entityName: string}) {
         };
       }
       setData({result, key: queryKey});
-      if (viewState.groupByColumns.length === 0) {
+      if (groupBy.length === 0) {
         setColumnDescriptions(prev =>
           prev == null && result.columns.length > 0 ? result.columns : prev,
         );
@@ -381,6 +421,7 @@ export default function EntityView({entityName}: {entityName: string}) {
     handle,
     waitingForMoves,
     byActivity,
+    groupBy,
     viewState,
     search,
     pkColumn,
@@ -393,8 +434,7 @@ export default function EntityView({entityName}: {entityName: string}) {
   ]);
 
   // A page opened grouped still needs the entity's own columns.
-  const needsSchema =
-    columnDescriptions == null && viewState.groupByColumns.length > 0;
+  const needsSchema = columnDescriptions == null && groupBy.length > 0;
   useEffect(() => {
     if (handle == null || !needsSchema) {
       return;
@@ -468,6 +508,22 @@ export default function EntityView({entityName}: {entityName: string}) {
 
   const result = data?.result ?? null;
   const rowCount = result?.rows.length ?? 0;
+  // A partition's groups on this page, for their member counts.
+  const pageGroups = useMemo(() => {
+    if (partition == null || result == null) {
+      return [];
+    }
+    const i = result.columns.findIndex(c => c.name === partition);
+    return i < 0
+      ? []
+      : result.rows.map(r => r.cells[i]?.stringValue ?? '').filter(g => g);
+  }, [partition, result]);
+  const groupSizes = useGroupSizes(
+    handle,
+    metadata,
+    partition ?? '',
+    pageGroups,
+  );
   const fields = useMemo(
     () => (result != null ? buildFields(result.columns) : []),
     [result],
@@ -476,19 +532,19 @@ export default function EntityView({entityName}: {entityName: string}) {
     () => profileFields(fields, result?.rows ?? []),
     [fields, result],
   );
-  const grouped = viewState.groupByColumns.length > 0;
+  const grouped = groupBy.length > 0;
   const byKey = useMemo(() => new Map(fields.map(f => [f.key, f])), [fields]);
 
   // The row's label: its name, or the grouped-by columns and their count.
   const labels = useMemo((): EntityField[] => {
     if (grouped) {
-      const keys = new Set(normalizeShown(viewState.groupByColumns, fields));
+      const keys = new Set(normalizeShown(groupBy, fields));
       return fields.filter(f => keys.has(f.key) || f.kind === 'count');
     }
     const name =
       fields.find(f => f.primaryKey) ?? fields.find(f => f.kind === 'name');
     return name != null ? [name] : [];
-  }, [grouped, viewState.groupByColumns, fields]);
+  }, [grouped, groupBy, fields]);
   const labelKeys = new Set(labels.map(f => f.key));
   const pickable = fields.filter(f => isPickable(f) && !labelKeys.has(f.key));
 
@@ -530,6 +586,7 @@ export default function EntityView({entityName}: {entityName: string}) {
         0,
       ) +
       (moveCounts != null ? MOVES_WIDTH : 0) +
+      (groupMoved != null ? GROUP_COUNTS_WIDTH : 0) +
       (showChange ? CHANGE_WIDTH : 0) +
       Array.from(locked).reduce((s, k) => s + widthOf(k), 0);
     const budget = (listWidth ?? DEFAULT_LIST_WIDTH) - LIST_CHROME - fixed;
@@ -612,7 +669,12 @@ export default function EntityView({entityName}: {entityName: string}) {
       ? [
           {
             key: 'moved',
-            label: kind === 'object' ? 'Moved' : 'Touched by moves',
+            label:
+              kind === 'object'
+                ? 'Moved'
+                : kind === 'partition'
+                  ? 'Groups with moved rows'
+                  : 'Touched by moves',
             onRemove: () =>
               setViewState(prev => ({...prev, movedOnly: false, offset: 0})),
           },
@@ -643,7 +705,18 @@ export default function EntityView({entityName}: {entityName: string}) {
     );
   }
 
-  const rowNoun = kind === 'dynamic dimension' ? 'values' : entityName;
+  const rowNoun =
+    kind === 'dynamic dimension'
+      ? 'values'
+      : kind === 'partition'
+        ? 'groups'
+        : entityName;
+  const total =
+    kind === 'container'
+      ? (metadata?.numContainers ?? null)
+      : entityTotal?.key === totalKey
+        ? (entityTotal?.n ?? null)
+        : null;
   const show =
     movedNames != null && moves != null && metadata != null
       ? kind === 'object'
@@ -653,26 +726,28 @@ export default function EntityView({entityName}: {entityName: string}) {
             movedCount: moves.count,
             total: metadata.numObjects,
           }
-        : {
-            label: 'Touched',
-            help:
-              kind === 'container'
-                ? `${metadata.containerName} rows that a move leaves or enters, Initial → Final. Shown by default; All lists every row.`
-                : `${entityName} items that ${metadata.objectName} rows moved into or out of, Initial → Final; a move inside one item does not change it. Shown by default; All lists every item.`,
-            movedCount: movedNames.length,
-            total:
-              kind === 'container'
-                ? metadata.numContainers
-                : scopeTotal?.entity === entityName
-                  ? scopeTotal.n
-                  : null,
-          }
+        : kind === 'partition'
+          ? {
+              label: 'Moved',
+              help: `${partition} groups with at least one moved ${metadata.objectName} row, most moved first. Shown by default; All lists every group.`,
+              movedCount: movedNames.length,
+              total,
+            }
+          : {
+              label: 'Touched',
+              help:
+                kind === 'container'
+                  ? `${metadata.containerName} rows that a move leaves or enters, Initial → Final. Shown by default; All lists every row.`
+                  : `${entityName} items that ${metadata.objectName} rows moved into or out of, Initial → Final; a move inside one item does not change it. Shown by default; All lists every item.`,
+              movedCount: movedNames.length,
+              total,
+            }
       : null;
 
   return (
     <PageContainer>
       <PageHead
-        title={entityName}
+        title={partition ?? entityName}
         sub={
           kind != null && metadata != null ? (
             <Box
@@ -772,6 +847,10 @@ export default function EntityView({entityName}: {entityName: string}) {
                 rowEntity={
                   !grouped && kind !== 'dynamic dimension' ? entityName : null
                 }
+                rowGroup={partition}
+                groupMoved={groupMoved}
+                groupSizes={partition != null ? groupSizes : null}
+                allowGroupBy={partition == null}
                 handle={handle}
                 runId={runId}
                 linkEntities={linkEntities}
@@ -793,10 +872,12 @@ export default function EntityView({entityName}: {entityName: string}) {
           )}
         </Box>
       </Box>
-      <MetricDistributionSection
-        entityName={entityName}
-        columnDescriptions={columnDescriptions ?? []}
-      />
+      {partition == null && (
+        <MetricDistributionSection
+          entityName={entityName}
+          columnDescriptions={columnDescriptions ?? []}
+        />
+      )}
     </PageContainer>
   );
 }

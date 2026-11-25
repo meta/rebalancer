@@ -8,6 +8,7 @@ const metadata = {
   objectName: 'placement',
   containerName: 'allotment',
   scopeNames: ['failure_domain', 'server'],
+  partitionNames: ['job'],
   dynamicDimensionNames: ['dyn_cpu'],
   metricCollectionNames: ['scope item utilization values'],
   objectiveNames: ['minimize_servers', 'host_spread_per_job'],
@@ -26,6 +27,7 @@ describe('buildCommandItems', () => {
       'Entity:allotment',
       'Entity:failure_domain',
       'Entity:server',
+      'Entity:job',
       'Entity:dyn_cpu',
       'Metric:scope item utilization values',
       'Objective:minimize_servers',
@@ -46,9 +48,12 @@ describe('buildCommandItems', () => {
     });
   });
 
-  it('links entity and dynamic-dimension pages', () => {
+  it('links entity, partition and dynamic-dimension pages', () => {
     expect(items.find(i => i.label === 'server')?.href).toBe(
       '/run/abc/entity/server',
+    );
+    expect(items.find(i => i.label === 'job')?.href).toBe(
+      '/run/abc/partition/job',
     );
     expect(items.find(i => i.label === 'dyn_cpu')?.href).toBe(
       '/run/abc/dynamic-dimensions/dyn_cpu',

@@ -203,3 +203,43 @@ export function OutInBar({
     </Box>
   );
 }
+
+/**
+ * A part of a whole on a 6px track, in the current blue (what changed).
+ * Callers write the numbers as well.
+ */
+export function ShareBar({
+  part,
+  whole,
+  label,
+  width = 64,
+}: {
+  part: number;
+  whole: number;
+  label: string;
+  width?: number;
+}) {
+  const pct = whole > 0 ? Math.min(100, Math.max(3, (100 * part) / whole)) : 0;
+  return (
+    <Box
+      role="img"
+      aria-label={label}
+      sx={{
+        width,
+        height: 6,
+        flexShrink: 0,
+        borderRadius: radius('full'),
+        bgcolor: COLOR.bgSubtle,
+        overflow: 'hidden',
+      }}>
+      <Box
+        sx={{
+          width: `${pct}%`,
+          height: '100%',
+          borderRadius: radius('full'),
+          bgcolor: COLOR.current,
+        }}
+      />
+    </Box>
+  );
+}

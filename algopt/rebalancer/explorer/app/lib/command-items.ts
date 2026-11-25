@@ -14,8 +14,9 @@ export interface CommandItem {
 }
 
 /**
- * Every page of a run, from the metadata alone: the fixed pages, entity and
- * dynamic-dimension tables, metric collections, and each objective on
+ * Every page of a run, from the metadata alone: the fixed pages, entity,
+ * partition and dynamic-dimension tables, metric collections, and each
+ * objective on
  * Constraints & Objectives (filtered to that name, unchanged rows shown).
  */
 export function buildCommandItems(
@@ -48,6 +49,14 @@ export function buildCommandItems(
   entity(metadata.containerName, 'containers');
   for (const scope of metadata.scopeNames ?? []) {
     entity(scope, 'scope');
+  }
+  for (const name of metadata.partitionNames ?? []) {
+    items.push({
+      group: 'Entity',
+      label: name,
+      detail: 'partition',
+      href: `${basePath}/partition/${encodeURIComponent(name)}`,
+    });
   }
   for (const name of metadata.dynamicDimensionNames ?? []) {
     items.push({

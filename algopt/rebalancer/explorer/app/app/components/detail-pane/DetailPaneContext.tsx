@@ -48,6 +48,14 @@ export interface EntityPanePayload {
   runId: string;
 }
 
+/** One group of a partition: the objects that share a value. */
+export interface GroupPanePayload {
+  partition: string;
+  group: string;
+  handle: Handle;
+  runId: string;
+}
+
 /** The pane row key of an entity: its rows carry `data-pane-row` = this. */
 export function entityRowKey(entity: string, id: string): string {
   return `${entity}|${id}`;
@@ -55,7 +63,8 @@ export function entityRowKey(entity: string, id: string): string {
 
 export type DetailPaneContent =
   | {kind: 'expression'; payload: ExpressionPanePayload; tab: ExpressionPaneTab}
-  | {kind: 'entity'; payload: EntityPanePayload};
+  | {kind: 'entity'; payload: EntityPanePayload}
+  | {kind: 'group'; payload: GroupPanePayload};
 
 interface DetailPaneContextValue {
   content: DetailPaneContent | null;
@@ -75,9 +84,14 @@ type DetailPaneActions = Omit<DetailPaneContextValue, 'content' | 'stack'>;
 
 /** The title a panel shows, for "Back to …". */
 export function paneTitle(content: DetailPaneContent): string {
-  return content.kind === 'expression'
-    ? content.payload.name
-    : content.payload.id;
+  switch (content.kind) {
+    case 'expression':
+      return content.payload.name;
+    case 'entity':
+      return content.payload.id;
+    case 'group':
+      return content.payload.group;
+  }
 }
 
 // Content and actions are separate contexts, so rows that only open the pane

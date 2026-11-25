@@ -163,6 +163,70 @@ export function movedInGroup(
   return objects;
 }
 
+/** How many moved objects each group of a partition has. */
+export function movedPerGroup(
+  moved: ReadonlyMap<string, MovedObject>,
+  partition: string,
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const m of moved.values()) {
+    const g = m.groups.get(partition);
+    if (g != null && g !== '') {
+      counts.set(g, (counts.get(g) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+/**
+ * The scope to show how `objects` spread over: of the scopes they moved
+ * between two of its items, the coarsest (fewest items touched), then the one
+ * with the most such moves; the container when they crossed no scope.
+ * Spread and diversity goals are usually about coarse scopes.
+ */
+export function spreadScopeOf(
+  moved: ReadonlyMap<string, MovedObject>,
+  objects: Iterable<string>,
+  scopes: readonly string[],
+  containerName: string,
+): string {
+  const stats = new Map<string, {items: Set<string>; crossings: number}>();
+  for (const o of objects) {
+    const m = moved.get(o);
+    if (m == null) {
+      continue;
+    }
+    for (const scope of scopes) {
+      const w = m.where.get(scope);
+      // A move into or out of no item is not a move between items.
+      if (w == null || w.src === w.dst || w.src === '' || w.dst === '') {
+        continue;
+      }
+      const st = stats.get(scope) ?? {items: new Set<string>(), crossings: 0};
+      st.items.add(w.src);
+      st.items.add(w.dst);
+      st.crossings++;
+      stats.set(scope, st);
+    }
+  }
+  let best: {scope: string; items: number; crossings: number} | null = null;
+  for (const scope of scopes) {
+    const st = stats.get(scope);
+    if (st == null || scope === containerName) {
+      continue;
+    }
+    const items = st.items.size;
+    if (
+      best == null ||
+      items < best.items ||
+      (items === best.items && st.crossings > best.crossings)
+    ) {
+      best = {scope, items, crossings: st.crossings};
+    }
+  }
+  return best?.scope ?? containerName;
+}
+
 /** One flow of moved objects between two items of a scope. */
 export interface Flow {
   src: string;
@@ -170,13 +234,20 @@ export interface Flow {
   count: number;
 }
 
-/** Moved objects per (initial item, final item) of `key`, most first. */
+/**
+ * Moved objects per (initial item, final item) of `key`, most first; only
+ * `only` when given.
+ */
 export function flows(
   moved: ReadonlyMap<string, MovedObject>,
   key: string,
+  only?: ReadonlySet<string>,
 ): Flow[] {
   const byPair = new Map<string, Flow>();
-  for (const m of moved.values()) {
+  for (const [object, m] of moved) {
+    if (only != null && !only.has(object)) {
+      continue;
+    }
     const w = m.where.get(key);
     if (w == null || w.src === w.dst) {
       continue;

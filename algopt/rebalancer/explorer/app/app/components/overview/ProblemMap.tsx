@@ -230,6 +230,11 @@ export default function ProblemMap({
           count={partitions.length}
           sub={names(partitions)}
           color={cssColor('cat-5')}
+          href={
+            partitions.length > 0
+              ? `${basePath}/partition/${encodeURIComponent(partitions[0])}`
+              : undefined
+          }
         />
         <Box className="gap" />
         <Node

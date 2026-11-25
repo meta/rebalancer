@@ -50,13 +50,13 @@ import {
   InPaneContext,
   paneTitle,
   useDetailPane,
-  type EntityPanePayload,
   type ExpressionPanePayload,
   type ExpressionPaneTab,
 } from './DetailPaneContext';
 
 const WIDE_PREF = 'rbx-panel-wide';
 import EntityDetail from './EntityDetail';
+import GroupDetail from './GroupDetail';
 
 /** Panel header actions: step through the page's rows, widen, close. */
 function HeaderActions({
@@ -166,6 +166,12 @@ function paneStep(
     return {
       rowKey: entityRowKey(content.payload.entity, content.payload.id),
       control: 'entity',
+    };
+  }
+  if (content?.kind === 'group') {
+    return {
+      rowKey: entityRowKey(content.payload.partition, content.payload.group),
+      control: 'group',
     };
   }
   return null;
@@ -416,20 +422,29 @@ function ExpressionPane({
   );
 }
 
-function EntityPane({
-  payload,
+/** The panel of a named thing: kind tag, mono name, stepper, body. */
+function NamedPane({
+  tag,
+  name,
+  rowKey,
+  control,
   onClose,
   backTo,
   onBack,
   wide,
   onToggleWide,
+  children,
 }: {
-  payload: EntityPanePayload;
+  tag: string;
+  name: string;
+  rowKey: string;
+  control: string;
   onClose: () => void;
   backTo: string | null;
   onBack: () => void;
   wide: boolean;
   onToggleWide: () => void;
+  children: ReactNode;
 }) {
   return (
     <Box sx={{display: 'flex', flexDirection: 'column', height: '100%'}}>
@@ -448,7 +463,7 @@ function EntityPane({
         <BackLink to={backTo} onBack={onBack} />
         <Box sx={{flex: 1, minWidth: 0}}>
           <Box sx={{mb: 0.5}}>
-            <Tag>{payload.entity}</Tag>
+            <Tag>{tag}</Tag>
           </Box>
           <Box sx={{display: 'flex', alignItems: 'center', gap: 0.5}}>
             <Typography
@@ -459,31 +474,20 @@ function EntityPane({
                 fontSize: TEXT.lg,
                 overflowWrap: 'anywhere',
               }}>
-              {payload.id}
+              {name}
             </Typography>
-            <CopyButton value={payload.id} label="Copy name" />
+            <CopyButton value={name} label="Copy name" />
           </Box>
         </Box>
         <HeaderActions
-          stepper={
-            <PaneStepper
-              rowKey={entityRowKey(payload.entity, payload.id)}
-              control="entity"
-            />
-          }
+          stepper={<PaneStepper rowKey={rowKey} control={control} />}
           wide={wide}
           onToggleWide={onToggleWide}
           onClose={onClose}
         />
       </Box>
       <Box sx={{flex: 1, overflow: 'auto', px: 2.5, pt: 2, pb: 5}}>
-        <EntityDetail
-          key={`${payload.entity}|${payload.id}`}
-          handle={payload.handle}
-          runId={payload.runId}
-          entity={payload.entity}
-          id={payload.id}
-        />
+        {children}
       </Box>
     </Box>
   );
@@ -580,14 +584,47 @@ export default function DetailPane() {
           />
         )}
         {content?.kind === 'entity' && (
-          <EntityPane
-            payload={content.payload}
+          <NamedPane
+            tag={content.payload.entity}
+            name={content.payload.id}
+            rowKey={entityRowKey(content.payload.entity, content.payload.id)}
+            control="entity"
             onClose={close}
             backTo={backTo}
             onBack={back}
             wide={wide}
-            onToggleWide={toggleWide}
-          />
+            onToggleWide={toggleWide}>
+            <EntityDetail
+              key={`${content.payload.entity}|${content.payload.id}`}
+              handle={content.payload.handle}
+              runId={content.payload.runId}
+              entity={content.payload.entity}
+              id={content.payload.id}
+            />
+          </NamedPane>
+        )}
+        {content?.kind === 'group' && (
+          <NamedPane
+            tag={`${content.payload.partition} group`}
+            name={content.payload.group}
+            rowKey={entityRowKey(
+              content.payload.partition,
+              content.payload.group,
+            )}
+            control="group"
+            onClose={close}
+            backTo={backTo}
+            onBack={back}
+            wide={wide}
+            onToggleWide={toggleWide}>
+            <GroupDetail
+              key={`${content.payload.partition}|${content.payload.group}`}
+              handle={content.payload.handle}
+              runId={content.payload.runId}
+              partition={content.payload.partition}
+              group={content.payload.group}
+            />
+          </NamedPane>
         )}
       </InPaneContext.Provider>
     </Drawer>

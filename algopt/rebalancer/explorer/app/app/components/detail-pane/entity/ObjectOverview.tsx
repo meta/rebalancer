@@ -1,6 +1,6 @@
 'use client';
 
-import {useState, type ReactNode} from 'react';
+import {useContext, useState, type ReactNode} from 'react';
 
 import {Box, Button} from '@mui/material';
 
@@ -9,12 +9,14 @@ import type {RunMoves} from '@/app/components/entity/useRunChanges';
 import Pill from '@/app/components/ui/Pill';
 import {fieldValues, type EntityField} from '@/lib/entity-fields';
 import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
+import {useRebalancerHandle} from '@/lib/contexts/RebalancerHandleContext';
 import type {Handle, RowData} from '@/lib/rebalancer-explorer-types';
 import {movedInGroup} from '@/lib/run-changes';
 import {COLOR, EYEBROW_TEXT, TABULAR, TEXT, WEIGHT} from '@/lib/ui-tokens';
 import {stringifyQs} from '@/lib/url-state';
 import {encodeRunId} from '@/lib/run-id';
 
+import {InPaneContext, useDetailPaneActions} from '../DetailPaneContext';
 import EntityLink from '../EntityLink';
 import ObjectiveChanges from './ObjectiveChanges';
 import {PanelNote, PanelSection, PanelSkeleton, TableLink} from './parts';
@@ -197,6 +199,42 @@ function Moves({handle, id}: {handle: Handle; id: string}) {
   );
 }
 
+/** A group name that opens the group as the next panel. */
+function GroupLink({partition, group}: {partition: string; group: string}) {
+  const {open} = useDetailPaneActions();
+  const inPane = useContext(InPaneContext);
+  const {handle, runId} = useRebalancerHandle();
+  if (handle == null || runId == null) {
+    return <Box component="span">{group}</Box>;
+  }
+  return (
+    <Box
+      component="button"
+      type="button"
+      aria-label={`Show ${partition} group ${group}`}
+      onClick={() =>
+        open(
+          {kind: 'group', payload: {partition, group, handle, runId}},
+          {push: inPane},
+        )
+      }
+      sx={{
+        maxWidth: '100%',
+        p: 0,
+        border: 0,
+        bgcolor: 'transparent',
+        font: 'inherit',
+        color: COLOR.action,
+        textAlign: 'left',
+        overflowWrap: 'anywhere',
+        cursor: 'pointer',
+        '&:hover': {textDecoration: 'underline'},
+      }}>
+      {group}
+    </Box>
+  );
+}
+
 /**
  * The object's groups, one per partition, with how many of each group's
  * objects moved; a group opens its objects in the table.
@@ -253,8 +291,8 @@ function Groups({
               sx={{color: COLOR.textTertiary, overflowWrap: 'anywhere'}}>
               {key}
             </Box>
-            <Box component="span" sx={{minWidth: 0, overflowWrap: 'anywhere'}}>
-              {group}
+            <Box component="span" sx={{minWidth: 0}}>
+              <GroupLink partition={key} group={group} />
             </Box>
             <Box
               component="span"

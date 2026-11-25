@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import {Circle, Archive, Boxes, Ruler} from 'lucide-react';
+import {Circle, Archive, Boxes, Ruler, Shapes} from 'lucide-react';
 import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
 import {NavSectionLabel, SidebarMenuItem} from './SidebarMenuItem';
 import {CollapsibleNavSection, type NavLink} from './CollapsibleNavSection';
@@ -29,6 +29,7 @@ export function EntitiesNavSection({
   }
 
   const scopeNames = metadata.scopeNames ?? [];
+  const partitionNames = metadata.partitionNames ?? [];
   const dynamicDimensionNames = metadata.dynamicDimensionNames ?? [];
 
   const toLinks = (section: string, names: string[]): NavLink[] =>
@@ -74,6 +75,16 @@ export function EntitiesNavSection({
           title="Scopes"
           icon={Boxes}
           items={toLinks('entity', scopeNames)}
+          isCollapsed={collapsed}
+          onNavigate={closeMobile}
+        />
+      )}
+
+      {partitionNames.length > 0 && (
+        <CollapsibleNavSection
+          title="Partitions"
+          icon={Shapes}
+          items={toLinks('partition', partitionNames)}
           isCollapsed={collapsed}
           onNavigate={closeMobile}
         />

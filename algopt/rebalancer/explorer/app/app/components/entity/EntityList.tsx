@@ -22,7 +22,11 @@ import EntityFilter from '@/app/components/EntityFilter';
 import TablePaginationActions from '@/app/components/TablePaginationActions';
 import {ELLIPSIS_SX, TABLE_SX} from '@/app/components/table/tableSx';
 import FilterChips, {type ExtraChip} from '@/app/components/ui/FilterChips';
-import {BaselineCurrentBars, OutInBar} from '@/app/components/ui/Bars';
+import {
+  BaselineCurrentBars,
+  OutInBar,
+  ShareBar,
+} from '@/app/components/ui/Bars';
 import Pill from '@/app/components/ui/Pill';
 import {EmptyState} from '@/app/components/ui/StateViews';
 import {TAG_CHIP_SX} from '@/app/components/ui/Tag';
@@ -245,6 +249,92 @@ function ChangeCell({
   );
 }
 
+/**
+ * A group's member count over a bar on the page's scale: undefined while it
+ * is counted, null when it is not counted.
+ */
+function MembersCell({n, max}: {n: number | null | undefined; max: number}) {
+  if (n == null) {
+    return (
+      <Box
+        component="span"
+        title={n === null ? 'Not counted' : 'Counting…'}
+        sx={{color: COLOR.textDecorative}}>
+        {n === null ? '—' : '…'}
+      </Box>
+    );
+  }
+  return (
+    <Box
+      sx={{
+        display: 'inline-flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        gap: 0.5,
+      }}>
+      <NumberText value={n} />
+      <Box
+        aria-hidden
+        sx={{
+          width: 64,
+          height: 6,
+          borderRadius: '999px',
+          bgcolor: COLOR.bgSubtle,
+          display: 'flex',
+          justifyContent: 'flex-end',
+          overflow: 'hidden',
+        }}>
+        <Box
+          sx={{
+            width: `${max > 0 ? Math.max(3, (100 * n) / max) : 0}%`,
+            bgcolor: COLOR.borderStrong,
+            borderRadius: '999px',
+          }}
+        />
+      </Box>
+    </Box>
+  );
+}
+
+/** How many of a group's objects moved: "k of n" over the moved share. */
+function GroupMovedCell({
+  moved,
+  members,
+}: {
+  moved: number;
+  members: number | null;
+}) {
+  if (moved === 0) {
+    return (
+      <Box component="span" sx={{color: COLOR.textDecorative}}>
+        —
+      </Box>
+    );
+  }
+  return (
+    <Box
+      sx={{
+        display: 'inline-flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        gap: 0.5,
+      }}>
+      <Box component="span" sx={{...TABULAR, whiteSpace: 'nowrap'}}>
+        {members != null
+          ? `${formatCount(moved)} of ${formatCount(members)}`
+          : formatCount(moved)}
+      </Box>
+      {members != null && members > 0 && (
+        <ShareBar
+          part={moved}
+          whole={members}
+          label={`${formatCount(moved)} of ${formatCount(members)} moved`}
+        />
+      )}
+    </Box>
+  );
+}
+
 /** Moves out and in as words, over a bar on the page's scale. */
 function MovesCell({out, into, max}: {out: number; into: number; max: number}) {
   if (out === 0 && into === 0) {
@@ -334,6 +424,10 @@ export default function EntityList({
   objectStatus,
   moves,
   movesOrdered,
+  rowGroup,
+  groupMoved,
+  groupSizes,
+  allowGroupBy,
   showChange,
   columnDescriptions,
   columnTypeaheadEntities,
@@ -362,6 +456,12 @@ export default function EntityList({
   moves: ReadonlyMap<string, ItemMoves> | null;
   // The rows come busiest first: the Moves header shows the order.
   movesOrdered: boolean;
+  // A partition's page: rows are its groups, and a group opens its panel.
+  rowGroup: string | null;
+  // Moved objects and members per group, on a partition's page.
+  groupMoved: ReadonlyMap<string, number> | null;
+  groupSizes: ReadonlyMap<string, number | null> | null;
+  allowGroupBy: boolean;
   showChange: boolean;
   columnDescriptions: ColumnDescription[];
   columnTypeaheadEntities: Record<string, string> | undefined;
@@ -419,10 +519,24 @@ export default function EntityList({
     onViewStateChange(prev => ({...prev, filters, offset: 0}));
 
   const openRow = (id: string) => {
-    if (rowEntity != null && id !== '') {
+    if (id === '') {
+      return;
+    }
+    if (rowEntity != null) {
       open({kind: 'entity', payload: {entity: rowEntity, id, handle, runId}});
+    } else if (rowGroup != null) {
+      open({
+        kind: 'group',
+        payload: {partition: rowGroup, group: id, handle, runId},
+      });
     }
   };
+  const groupField =
+    rowGroup != null ? (labels.find(f => f.key === rowGroup) ?? null) : null;
+  let maxMembers = 0;
+  for (const n of groupSizes?.values() ?? []) {
+    maxMembers = Math.max(maxMembers, n ?? 0);
+  }
 
   const linkFor = (field: EntityField): string | undefined =>
     linkEntities[field.columns[field.columns.length - 1]];
@@ -511,7 +625,7 @@ export default function EntityList({
             flexWrap: 'wrap',
             gap: 1.5,
           }}>
-          {groupOptions.length > 0 && (
+          {allowGroupBy && groupOptions.length > 0 && (
             <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
               <Box
                 component="span"
@@ -744,6 +858,32 @@ export default function EntityList({
                     {head(f, f.label, f.numeric)}
                   </Box>
                 ))}
+                {groupMoved != null && (
+                  <>
+                    <th
+                      className="num"
+                      title="Objects in the group (one count per group shown)">
+                      Members
+                    </th>
+                    <th
+                      className="num"
+                      title="Objects of the group that moved, Initial → Final"
+                      aria-sort={movesOrdered ? 'descending' : undefined}>
+                      <Box
+                        component="span"
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                        }}>
+                        Moved
+                        {movesOrdered && (
+                          <SortArrow dir={OrderDirection.DESCENDING} />
+                        )}
+                      </Box>
+                    </th>
+                  </>
+                )}
                 {moves != null && (
                   <th
                     className="num"
@@ -777,9 +917,18 @@ export default function EntityList({
             </thead>
             <tbody>
               {rows.map((row, ri) => {
-                const id = rowEntity != null ? rowName(fields, row) : '';
+                const id =
+                  rowEntity != null
+                    ? rowName(fields, row)
+                    : groupField != null
+                      ? String(fieldValues(groupField, row).b ?? '')
+                      : '';
                 const paneKey =
-                  rowEntity != null ? entityRowKey(rowEntity, id) : null;
+                  rowEntity != null
+                    ? entityRowKey(rowEntity, id)
+                    : rowGroup != null && id !== ''
+                      ? entityRowKey(rowGroup, id)
+                      : null;
                 return (
                   <tr
                     key={paneKey ?? ri}
@@ -814,6 +963,14 @@ export default function EntityList({
                             status={objectStatus}
                             row={row}
                           />
+                        ) : f === groupField ? (
+                          <NameCell
+                            id={id}
+                            onOpen={() => openRow(id)}
+                            status={null}
+                            row={row}
+                            control="group"
+                          />
                         ) : f.numeric ? (
                           <NumberText value={asNumber(fieldValues(f, row).b)} />
                         ) : (
@@ -827,6 +984,22 @@ export default function EntityList({
                         )}
                       </Box>
                     ))}
+                    {groupMoved != null && (
+                      <>
+                        <td className="num">
+                          <MembersCell
+                            n={groupSizes?.get(id)}
+                            max={maxMembers}
+                          />
+                        </td>
+                        <td className="num">
+                          <GroupMovedCell
+                            moved={groupMoved.get(id) ?? 0}
+                            members={groupSizes?.get(id) ?? null}
+                          />
+                        </td>
+                      </>
+                    )}
                     {moves != null && (
                       <td className="num">
                         <MovesCell
@@ -888,11 +1061,14 @@ function NameCell({
   onOpen,
   status,
   row,
+  control = 'entity',
 }: {
   id: string;
   onOpen: () => void;
   status: ObjectStatus | null;
   row: RowData;
+  // What the pane stepper presses on this row.
+  control?: 'entity' | 'group';
 }) {
   let moved = false;
   let fixed = false;
@@ -908,7 +1084,7 @@ function NameCell({
       <Box
         component="button"
         type="button"
-        data-pane-open="entity"
+        data-pane-open={control}
         data-overflow
         title={`${id}: open its details`}
         onClick={onOpen}

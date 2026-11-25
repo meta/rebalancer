@@ -11,9 +11,11 @@ import {
   moveSetsFromTable,
   movedInGroup,
   movedObjectsFromRows,
+  movedPerGroup,
   movedThrough,
   objectiveChanges,
   setsOf,
+  spreadScopeOf,
 } from '@/lib/run-changes';
 
 function col(
@@ -92,6 +94,48 @@ describe('itemMoves and movedThrough', () => {
 
   it('finds the moved objects of a group', () => {
     expect(movedInGroup(moved, 'job', 'j1')).toEqual(['t1', 't2']);
+    expect(Object.fromEntries(movedPerGroup(moved, 'job'))).toEqual({
+      j1: 2,
+      j2: 1,
+    });
+  });
+
+  it('keeps the flows of some objects only', () => {
+    expect(flows(moved, 'rack', new Set(['t1', 't3']))).toEqual([
+      {src: 'r1', dst: 'r2', count: 1},
+    ]);
+  });
+
+  it('picks the coarsest scope the objects moved across', () => {
+    const scopes = ['host', 'rack'];
+    expect(spreadScopeOf(moved, ['t1', 't2'], scopes, 'host')).toBe('rack');
+    // t3 moved inside rack r2: only its container changed.
+    expect(spreadScopeOf(moved, ['t3'], scopes, 'host')).toBe('host');
+    expect(spreadScopeOf(moved, [], scopes, 'host')).toBe('host');
+  });
+
+  it('prefers fewer items, and skips moves into or out of no item', () => {
+    const m = movedObjectsFromRows(
+      [
+        col('o', ColumnType.ENTITY_NAME, true),
+        col('src.pool', ColumnType.ASSIGNMENT),
+        col('dst.pool', ColumnType.ASSIGNMENT),
+        col('src.zone', ColumnType.ASSIGNMENT),
+        col('dst.zone', ColumnType.ASSIGNMENT),
+        col('src.rack', ColumnType.ASSIGNMENT),
+        col('dst.rack', ColumnType.ASSIGNMENT),
+      ],
+      [
+        row('a', 'p1', '', 'z1', 'z2', 'r1', 'r2'),
+        row('b', '', 'p1', 'z2', 'z1', 'r3', 'r4'),
+      ],
+      {a: 'h2', b: 'h1'},
+      'host',
+      [],
+    );
+    expect(
+      spreadScopeOf(m, ['a', 'b'], ['host', 'pool', 'rack', 'zone'], 'host'),
+    ).toBe('zone');
   });
 });
 
