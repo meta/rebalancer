@@ -28,7 +28,7 @@ namespace facebook::rebalancer {
 GlobalLabeledObjectives GlobalLabeledObjectives::getLabeledObjectivesTuple(
     size_t begin,
     size_t end) const {
-  if (begin < 0 || end > size()) {
+  if (end > size()) {
     throw std::runtime_error(
         fmt::format("invalid range: begin: {}, end: {}", begin, end));
   }

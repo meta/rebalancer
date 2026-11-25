@@ -164,12 +164,6 @@ PackerSet<Input> getEqualSizeRandomSamplesFromEachSetIn(
     size_t totalRequiredSampleSize,
     std::mt19937& rng,
     std::optional<Input> idToExcludeFromSample = std::nullopt) {
-  if (totalRequiredSampleSize < 0) {
-    throw std::runtime_error(
-        fmt::format(
-            "found negative sample size {} in getEqualSizeRandomContainersSampleFromEachSetIn()",
-            totalRequiredSampleSize));
-  }
   if (totalRequiredSampleSize == 0) {
     return {};
   }
