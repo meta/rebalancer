@@ -12,7 +12,7 @@ import {
   viewStateFromSearchParams,
   type ViewState,
 } from '@/app/components/entity/entity-view-state';
-import useRunMoves from '@/app/components/entity/useRunMoves';
+import {useRunMoves} from '@/app/components/entity/useRunChanges';
 import PageHead, {PageContainer} from '@/app/components/shell/PageHead';
 import type {ExtraChip} from '@/app/components/ui/FilterChips';
 import {EmptyState, ErrorState} from '@/app/components/ui/StateViews';

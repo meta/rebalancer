@@ -2,25 +2,16 @@
 
 import {useEffect, useMemo, useState} from 'react';
 
-import {Box, Button, Link, TextField, Typography} from '@mui/material';
-import {ArrowUpRight} from 'lucide-react';
+import {Box, Tab, Tabs} from '@mui/material';
 
-import CopyButton from '@/app/components/ui/CopyButton';
+import {useRunMoves} from '@/app/components/entity/useRunChanges';
+import {Count} from '@/app/components/ui/Pill';
 import {
   EmptyState,
   ErrorState,
   LoadingState,
 } from '@/app/components/ui/StateViews';
-import {
-  buildFields,
-  fieldValues,
-  isBlank,
-  type CellValue,
-  type EntityField,
-  type FieldKind,
-} from '@/lib/entity-fields';
-import {formatCount, formatSignedCompact} from '@/lib/format';
-import {COLOR, EYEBROW_TEXT, TEXT} from '@/lib/ui-tokens';
+import {buildFields} from '@/lib/entity-fields';
 import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
 import {fetchEntityData} from '@/lib/rebalancer-explorer-api';
 import type {
@@ -28,39 +19,18 @@ import type {
   Handle,
   Result,
 } from '@/lib/rebalancer-explorer-types';
-import {encodeRunId} from '@/lib/run-id';
+import {COLOR} from '@/lib/ui-tokens';
 
-import EntityLink from './EntityLink';
-import {stringifyQs} from '@/lib/url-state';
+import EntityValues from './entity/EntityValues';
+import ItemOverview from './entity/ItemOverview';
+import ObjectOverview from './entity/ObjectOverview';
 
 // Primary-key column per (sandbox, entity), so a second open needs one RPC.
 const primaryKeyCache = new Map<string, string>();
 
-const DETAIL_SECTIONS: ReadonlyArray<{
-  kind: FieldKind;
-  title: string;
-  sub?: string;
-}> = [
-  {kind: 'assignment', title: 'Assignment', sub: 'initial → final'},
-  {kind: 'scope', title: 'Scopes'},
-  {kind: 'partition', title: 'Partitions'},
-  {kind: 'utilization', title: 'Utilization', sub: 'initial → final'},
-  {kind: 'dimension', title: 'Dimensions'},
-  {kind: 'name', title: 'Names'},
-  {kind: 'count', title: 'Counts'},
-  {kind: 'other', title: 'Other'},
-];
-
-/** Up to 6 significant digits; the exact value is in the title and copy. */
-function formatDetail(v: number): string {
-  if (Number.isInteger(v)) {
-    return formatCount(v);
-  }
-  return String(Number(v.toPrecision(6))).replace('-', '\u2212');
-}
-
-// Kinds whose values name an entity.
-const NAMING_KINDS = new Set<FieldKind>(['name', 'assignment', 'scope']);
+type EntityTab = 'overview' | 'values';
+// The tab stays put while j / k step through the rows.
+let lastTab: EntityTab = 'overview';
 
 async function loadRow(
   handle: Handle,
@@ -91,7 +61,12 @@ async function loadRow(
   return {primaryKey, result: response.result};
 }
 
-/** One entity row (object, container or scope item), shown vertically. */
+/**
+ * One object, container or scope item as a node of the run: an overview of
+ * how it changed and what it connects to (its placement, the objects that
+ * moved through it, the objectives those moves changed, its scopes and
+ * groups), and every value of its row.
+ */
 export default function EntityDetail({
   handle,
   runId,
@@ -108,30 +83,19 @@ export default function EntityDetail({
     | {status: 'error'; message: string}
     | {status: 'done'; primaryKey: string; result: Result}
   >({status: 'loading'});
-  const [query, setQuery] = useState('');
   const {metadata} = useProblemMetadata();
+  const [tab, setTab] = useState<EntityTab>(lastTab);
 
-  // A value that names another object, container or scope item opens it as
-  // the next panel. Partitions have no entity page.
-  const linkEntityFor = useMemo(() => {
-    const known = new Set(
-      metadata == null
-        ? []
-        : [metadata.objectName, metadata.containerName, ...metadata.scopeNames],
-    );
-    return (field: EntityField): string | null => {
-      if (!NAMING_KINDS.has(field.kind)) {
-        return null;
-      }
-      const name = field.columns[field.columns.length - 1];
-      if (known.has(name)) {
-        return name;
-      }
-      const dot = name.indexOf('.');
-      const suffix = dot >= 0 ? name.substring(dot + 1) : null;
-      return suffix != null && known.has(suffix) ? suffix : null;
-    };
-  }, [metadata]);
+  const kind =
+    metadata == null
+      ? null
+      : entity === metadata.objectName
+        ? 'object'
+        : entity === metadata.containerName ||
+            metadata.scopeNames.includes(entity)
+          ? 'item'
+          : null;
+  const {moves} = useRunMoves(handle, metadata, kind != null);
 
   useEffect(() => {
     let cancelled = false;
@@ -156,41 +120,10 @@ export default function EntityDetail({
     };
   }, [handle, entity, id]);
 
-  const [showBlank, setShowBlank] = useState(false);
-  const sections = useMemo(() => {
-    if (state.status !== 'done' || state.result.rows.length === 0) {
-      return null;
-    }
-    const row = state.result.rows[0];
-    const needle = query.trim().toLowerCase();
-    const fields = buildFields(state.result.columns).filter(f => !f.primaryKey);
-    const items = fields.map(f => {
-      const {a, b} = fieldValues(f, row);
-      return {f, a, b, blank: isBlank(a) && isBlank(b), changed: a !== b};
-    });
-    const matching = items.filter(
-      ({f, a, b}) =>
-        needle === '' ||
-        f.label.toLowerCase().includes(needle) ||
-        String(a ?? '')
-          .toLowerCase()
-          .includes(needle) ||
-        String(b ?? '')
-          .toLowerCase()
-          .includes(needle),
-    );
-    return {
-      total: items.length,
-      blank: matching.filter(x => x.blank).length,
-      groups: DETAIL_SECTIONS.map(section => ({
-        ...section,
-        items: matching
-          .filter(x => x.f.kind === section.kind && (showBlank || !x.blank))
-          // Changed values first, then in column order.
-          .sort((x, y) => Number(y.changed) - Number(x.changed)),
-      })).filter(g => g.items.length > 0),
-    };
-  }, [state, query, showBlank]);
+  const fields = useMemo(
+    () => (state.status === 'done' ? buildFields(state.result.columns) : []),
+    [state],
+  );
 
   if (state.status === 'loading') {
     return <LoadingState compact label={`Loading ${entity}...`} />;
@@ -201,183 +134,74 @@ export default function EntityDetail({
   if (state.result.rows.length === 0) {
     return <EmptyState compact title={`No ${entity} named ${id}`} />;
   }
-
-  // Dynamic dimensions have their own page, like in the sidebar.
-  const section = metadata?.dynamicDimensionNames.includes(entity)
-    ? 'dynamic-dimensions'
-    : 'entity';
-  const tableHref = `/run/${encodeRunId(runId)}/${section}/${encodeURIComponent(
-    entity,
-  )}?${stringifyQs({
-    filters: [{rules: [{stringAny: {column: state.primaryKey, values: [id]}}]}],
-  })}`;
-  if (sections == null) {
-    return null;
+  const row = state.result.rows[0];
+  const values = (
+    <EntityValues
+      runId={runId}
+      entity={entity}
+      id={id}
+      primaryKey={state.primaryKey}
+      result={state.result}
+    />
+  );
+  if (kind == null) {
+    return values;
   }
-
   return (
     <Box>
-      <Box sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 1.5}}>
-        <Typography variant="subtitle2" sx={{flex: 1}}>
-          {`${sections.total} values`}
-        </Typography>
-        {/* A full navigation: the entity view reads its filters from the URL
-            on mount, including when this is the page already open. */}
-        <Link
-          href={tableHref}
-          sx={{display: 'inline-flex', alignItems: 'center', gap: 0.5}}>
-          Open in table
-          <ArrowUpRight size={14} aria-hidden />
-        </Link>
+      <Box
+        sx={{
+          position: 'sticky',
+          top: -16,
+          zIndex: 1,
+          mx: -2.5,
+          mt: -2,
+          mb: 2,
+          px: 1.5,
+          bgcolor: COLOR.bgSurface,
+          borderBottom: `1px solid ${COLOR.borderDefault}`,
+        }}>
+        <Tabs
+          value={tab}
+          onChange={(_e, value: EntityTab) => {
+            lastTab = value;
+            setTab(value);
+          }}>
+          <Tab value="overview" label="Overview" />
+          <Tab
+            value="values"
+            label={
+              <Box
+                component="span"
+                sx={{display: 'inline-flex', alignItems: 'center', gap: 0.75}}>
+                Values
+                <Count>{fields.filter(f => !f.primaryKey).length}</Count>
+              </Box>
+            }
+          />
+        </Tabs>
       </Box>
-      {sections.total > 12 && (
-        <TextField
-          size="small"
-          fullWidth
-          placeholder="Find a value"
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          slotProps={{htmlInput: {'aria-label': 'Find a value'}}}
-          sx={{mb: 1.5}}
+      {tab === 'values' ? (
+        values
+      ) : kind === 'object' ? (
+        <ObjectOverview
+          handle={handle}
+          runId={runId}
+          id={id}
+          fields={fields}
+          row={row}
+          moves={moves}
         />
-      )}
-      <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
-        {sections.groups.map(group => (
-          <Box component="section" key={group.kind}>
-            <Box
-              component="h3"
-              sx={{
-                ...EYEBROW_TEXT,
-                fontFamily: 'inherit',
-                m: 0,
-                mb: 0.5,
-                display: 'flex',
-                gap: 0.75,
-              }}>
-              {group.title}
-              {group.sub != null && (
-                <Box
-                  component="span"
-                  sx={{textTransform: 'none', letterSpacing: 0}}>
-                  {group.sub}
-                </Box>
-              )}
-            </Box>
-            <Box
-              component="dl"
-              sx={{
-                m: 0,
-                display: 'grid',
-                gridTemplateColumns: 'minmax(120px, 38%) minmax(0, 1fr) 24px',
-                alignItems: 'start',
-                columnGap: 2,
-              }}>
-              {group.items.map(({f, a, b, changed}) => {
-                const linkEntity = linkEntityFor(f);
-                const text = (v: CellValue) =>
-                  v == null ? '—' : typeof v === 'number' ? String(v) : v;
-                const shown = (v: CellValue) =>
-                  typeof v === 'number' ? formatDetail(v) : text(v);
-                const value = (v: CellValue, strong: boolean) =>
-                  linkEntity != null &&
-                  typeof v === 'string' &&
-                  !(linkEntity === entity && v === id) ? (
-                    <Box component="span" sx={{minWidth: 0}}>
-                      <EntityLink entity={linkEntity} id={v} />
-                    </Box>
-                  ) : (
-                    <Box
-                      component="span"
-                      sx={{
-                        overflowWrap: 'anywhere',
-                        fontVariantNumeric: 'tabular-nums',
-                        fontWeight: strong ? 600 : undefined,
-                        color:
-                          v == null || v === 0 ? COLOR.textTertiary : undefined,
-                      }}
-                      title={typeof v === 'number' ? String(v) : undefined}>
-                      {shown(v)}
-                    </Box>
-                  );
-                return (
-                  <Box key={f.key} sx={{display: 'contents'}}>
-                    <Box
-                      component="dt"
-                      title={f.columns.join(' · ')}
-                      sx={{
-                        py: 0.75,
-                        minWidth: 0,
-                        color: COLOR.textTertiary,
-                        fontSize: TEXT.sm,
-                        overflowWrap: 'anywhere',
-                      }}>
-                      {f.label}
-                    </Box>
-                    <Box
-                      component="dd"
-                      sx={{
-                        m: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        columnGap: 0.5,
-                        py: 0.75,
-                        minWidth: 0,
-                        fontSize: TEXT.sm,
-                      }}>
-                      {changed ? (
-                        <>
-                          <Box
-                            component="span"
-                            sx={{color: COLOR.textTertiary, minWidth: 0}}>
-                            {value(a, false)}
-                          </Box>
-                          <Box
-                            component="span"
-                            aria-label="to"
-                            sx={{color: COLOR.textDecorative}}>
-                            →
-                          </Box>
-                          {value(b, true)}
-                          {typeof a === 'number' && typeof b === 'number' && (
-                            <Box
-                              component="span"
-                              sx={{
-                                color: COLOR.textTertiary,
-                                fontSize: TEXT.xs,
-                                fontVariantNumeric: 'tabular-nums',
-                              }}>
-                              ({formatSignedCompact(b - a)})
-                            </Box>
-                          )}
-                        </>
-                      ) : (
-                        value(b, false)
-                      )}
-                    </Box>
-                    <Box component="dd" sx={{m: 0, pt: 0.5}}>
-                      <CopyButton
-                        value={text(b)}
-                        label={`Copy ${f.label}`}
-                        size={12}
-                      />
-                    </Box>
-                  </Box>
-                );
-              })}
-            </Box>
-          </Box>
-        ))}
-      </Box>
-      {sections.blank > 0 && (
-        <Button
-          size="small"
-          onClick={() => setShowBlank(v => !v)}
-          sx={{mt: 1.5, ml: -0.5}}>
-          {showBlank
-            ? 'Hide the values that are 0 or empty'
-            : `Show ${sections.blank} more ${sections.blank === 1 ? 'value' : 'values'} that are 0 or empty`}
-        </Button>
+      ) : (
+        <ItemOverview
+          handle={handle}
+          runId={runId}
+          entity={entity}
+          id={id}
+          fields={fields}
+          row={row}
+          moves={moves}
+        />
       )}
     </Box>
   );

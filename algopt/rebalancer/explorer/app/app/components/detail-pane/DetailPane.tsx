@@ -28,6 +28,7 @@ import SpecViewer from '@/app/components/evaluation/SpecViewer';
 import CopyButton from '@/app/components/ui/CopyButton';
 import Pill from '@/app/components/ui/Pill';
 import Tag from '@/app/components/ui/Tag';
+import PanelValue from '@/app/components/ui/PanelValue';
 import TupleBadge from '@/app/components/ui/TupleBadge';
 import {setPref, usePref} from '@/lib/prefs';
 import {
@@ -56,76 +57,6 @@ import {
 
 const WIDE_PREF = 'rbx-panel-wide';
 import EntityDetail from './EntityDetail';
-
-/**
- * A mini KPI of the panel: a 12px label (with the side's dot for A and B)
- * over the value.
- */
-function Value({
-  label,
-  side,
-  children,
-}: {
-  label: string;
-  side?: 'A' | 'B';
-  children: ReactNode;
-}) {
-  return (
-    <Box
-      sx={{
-        minWidth: 0,
-        px: 1.5,
-        py: 1.25,
-        border: `1px solid ${COLOR.borderDefault}`,
-        borderRadius: radius('lg'),
-        bgcolor: COLOR.bgSurface,
-      }}>
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 0.75,
-          color: COLOR.textTertiary,
-          fontSize: TEXT.xs,
-          fontWeight: WEIGHT.medium,
-        }}>
-        {side != null && (
-          <Box
-            component="span"
-            aria-hidden
-            sx={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              flexShrink: 0,
-              bgcolor: side === 'A' ? COLOR.baseline : COLOR.current,
-            }}
-          />
-        )}
-        <Box
-          component="span"
-          sx={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}>
-          {label}
-        </Box>
-      </Box>
-      <Box
-        sx={{
-          mt: 0.5,
-          fontSize: TEXT.lg,
-          fontWeight: WEIGHT.heading,
-          lineHeight: 1.3,
-          overflowWrap: 'anywhere',
-          ...TABULAR,
-        }}>
-        {children}
-      </Box>
-    </Box>
-  );
-}
 
 /** Panel header actions: step through the page's rows, widen, close. */
 function HeaderActions({
@@ -417,41 +348,41 @@ function ExpressionPane({
               gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
             },
           }}>
-          <Value label={aLabel} side="A">
+          <PanelValue label={aLabel} side="A">
             <PreciseNumber value={payload.srcValue} highlight={isConstraint} />
-          </Value>
-          <Value label={bLabel} side="B">
+          </PanelValue>
+          <PanelValue label={bLabel} side="B">
             <PreciseNumber value={payload.dstValue} highlight={isConstraint} />
-          </Value>
-          <Value
+          </PanelValue>
+          <PanelValue
             label={`B − A (${formatPercentChange(payload.srcValue, payload.dstValue, payload.percentage).replace(/-/g, '\u2212')})`}>
             <PreciseNumber
               value={payload.delta}
               highlight={!isConstraint}
               signed
             />
-          </Value>
-          <Value label="Direction">
+          </PanelValue>
+          <PanelValue label="Direction">
             <Box
               component="span"
               sx={{fontSize: TEXT.sm, fontWeight: WEIGHT.semibold}}>
               Lower is better
             </Box>
-          </Value>
+          </PanelValue>
           {hasPenalty && (
             <>
-              <Value label="Penalty A" side="A">
+              <PanelValue label="Penalty A" side="A">
                 <PreciseNumber
                   value={payload.srcPenalty ?? 0}
                   highlight={false}
                 />
-              </Value>
-              <Value label="Penalty B" side="B">
+              </PanelValue>
+              <PanelValue label="Penalty B" side="B">
                 <PreciseNumber
                   value={payload.dstPenalty ?? 0}
                   highlight={false}
                 />
-              </Value>
+              </PanelValue>
             </>
           )}
         </Box>
