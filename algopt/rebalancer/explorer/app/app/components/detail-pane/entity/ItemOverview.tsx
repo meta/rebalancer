@@ -5,6 +5,7 @@ import {useEffect, useMemo, useState} from 'react';
 import {Box, Button} from '@mui/material';
 
 import type {RunMoves} from '@/app/components/entity/useRunChanges';
+import {BaselineCurrentBars} from '@/app/components/ui/Bars';
 import PanelValue from '@/app/components/ui/PanelValue';
 import {fieldValues, type EntityField} from '@/lib/entity-fields';
 import {formatCount, formatSignedCompact} from '@/lib/format';
@@ -24,7 +25,6 @@ import {stringifyQs} from '@/lib/url-state';
 import EntityLink from '../EntityLink';
 import ObjectiveChanges from './ObjectiveChanges';
 import {
-  BaselineCurrentBars,
   InitialFinal,
   PanelNote,
   PanelSection,

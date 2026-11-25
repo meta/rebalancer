@@ -11,7 +11,7 @@ describe('entity view state in the URL', () => {
   it('writes nothing for the defaults', () => {
     const state = viewStateFromSearchParams(new URLSearchParams());
     expect(searchParamsFromViewState(state)).toBe('');
-    expect(state).toMatchObject({search: '', movedOnly: false, limit: 25});
+    expect(state).toMatchObject({search: '', movedOnly: null, limit: 25});
   });
 
   it('round-trips every setting', () => {
@@ -30,11 +30,17 @@ describe('entity view state in the URL', () => {
     expect(viewStateFromSearchParams(new URLSearchParams(qs))).toEqual(state);
   });
 
+  it('keeps "all" as the way out of the default changed rows', () => {
+    const all = viewStateFromSearchParams(new URLSearchParams('show=all'));
+    expect(all.movedOnly).toBe(false);
+    expect(searchParamsFromViewState(all)).toBe('show=all');
+  });
+
   it('reads an unknown order direction as ascending', () => {
     const state = viewStateFromSearchParams(
       new URLSearchParams('orderDirection=7&show=other'),
     );
     expect(state.orderDirection).toBe(OrderDirection.ASCENDING);
-    expect(state.movedOnly).toBe(false);
+    expect(state.movedOnly).toBeNull();
   });
 });

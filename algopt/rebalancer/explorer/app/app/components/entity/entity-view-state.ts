@@ -20,8 +20,9 @@ export interface ViewState {
   showColumns: string[];
   // Case-insensitive part of the row's name.
   search: string;
-  // Only the rows that moved (objects) or that moves touched (containers).
-  movedOnly: boolean;
+  // Only the rows that moved (objects) or that moves touched (containers,
+  // scope items). Null is the default: on when the run has moves.
+  movedOnly: boolean | null;
 }
 
 export const DEFAULT_PAGE_SIZE = 25;
@@ -43,7 +44,8 @@ export function viewStateFromSearchParams(
     groupByColumns: asArray<string>(parsed.groupBy, []),
     showColumns: asArray<string>(parsed.showColumns, []),
     search: typeof parsed.q === 'string' ? parsed.q : '',
-    movedOnly: parsed.show === 'moved',
+    movedOnly:
+      parsed.show === 'moved' ? true : parsed.show === 'all' ? false : null,
   };
 }
 
@@ -74,8 +76,8 @@ export function searchParamsFromViewState(viewState: ViewState): string {
   if (viewState.search !== '') {
     obj.q = viewState.search;
   }
-  if (viewState.movedOnly) {
-    obj.show = 'moved';
+  if (viewState.movedOnly != null) {
+    obj.show = viewState.movedOnly ? 'moved' : 'all';
   }
   return stringifyQs(obj);
 }

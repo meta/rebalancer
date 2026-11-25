@@ -424,19 +424,6 @@ export function searchRule(column: string, text: string): FilterRule {
   return {regex: {column, regex: `(?i)${escapeRegex(text)}`}};
 }
 
-/** Containers' moves out and in, from each moved object's two containers. */
-export function containerMoves(
-  moved: ReadonlyMap<string, {src: string; dst: string}>,
-): {out: Map<string, number>; in: Map<string, number>} {
-  const out = new Map<string, number>();
-  const into = new Map<string, number>();
-  for (const {src, dst} of moved.values()) {
-    out.set(src, (out.get(src) ?? 0) + 1);
-    into.set(dst, (into.get(dst) ?? 0) + 1);
-  }
-  return {out, in: into};
-}
-
 /** The fields with these keys, grouped by kind, each kind in column order. */
 export function inDisplayOrder(
   fields: readonly EntityField[],

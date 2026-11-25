@@ -6,7 +6,7 @@ import {Box, Link, Skeleton, Typography} from '@mui/material';
 import {ArrowRight} from 'lucide-react';
 
 import {formatCompact} from '@/lib/format';
-import {COLOR, radius, TABULAR, TEXT, WEIGHT} from '@/lib/ui-tokens';
+import {COLOR, TABULAR, TEXT, WEIGHT} from '@/lib/ui-tokens';
 
 /** A section of the panel: a 14px title, a 12px sub-line, an action. */
 export function PanelSection({
@@ -90,59 +90,6 @@ export function PanelSkeleton({rows = 3}: {rows?: number}) {
       {Array.from({length: rows}, (_, i) => (
         <Skeleton key={i} variant="text" height={26} />
       ))}
-    </Box>
-  );
-}
-
-/**
- * Baseline / current bars: Initial (grey) over Final (blue) on one scale,
- * the larger of the two. Signs are shown as magnitudes; the text beside the
- * bars carries the values.
- */
-export function BaselineCurrentBars({
-  a,
-  b,
-  width = 96,
-}: {
-  a: number;
-  b: number;
-  width?: number | string;
-}) {
-  const max = Math.max(Math.abs(a), Math.abs(b));
-  const pct = (v: number) =>
-    max === 0
-      ? '0%'
-      : `${Math.max(Math.abs(v) > 0 ? 2 : 0, (100 * Math.abs(v)) / max)}%`;
-  const bar = (v: number, color: string) => (
-    <Box
-      sx={{
-        height: 5,
-        borderRadius: radius('full'),
-        bgcolor: COLOR.bgSubtle,
-        overflow: 'hidden',
-      }}>
-      <Box
-        sx={{
-          width: pct(v),
-          height: '100%',
-          borderRadius: radius('full'),
-          bgcolor: color,
-        }}
-      />
-    </Box>
-  );
-  return (
-    <Box
-      role="img"
-      aria-label={`Initial ${formatCompact(a)}, final ${formatCompact(b)}`}
-      sx={{
-        width,
-        flexShrink: 0,
-        display: 'grid',
-        gap: '2px',
-      }}>
-      {bar(a, COLOR.baseline)}
-      {bar(b, COLOR.current)}
     </Box>
   );
 }

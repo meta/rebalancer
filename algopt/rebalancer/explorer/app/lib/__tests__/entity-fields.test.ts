@@ -2,7 +2,6 @@ import {describe, expect, it} from 'vitest';
 
 import {
   buildFields,
-  containerMoves,
   fieldValues,
   fitToWidth,
   inDisplayOrder,
@@ -210,19 +209,5 @@ describe('searchRule', () => {
     expect(searchRule('task', 'a.b(1)')).toEqual({
       regex: {column: 'task', regex: '(?i)a\\.b\\(1\\)'},
     });
-  });
-});
-
-describe('containerMoves', () => {
-  it('counts moves out of and into each container', () => {
-    const counts = containerMoves(
-      new Map([
-        ['t1', {src: 'h1', dst: 'h2'}],
-        ['t2', {src: 'h1', dst: 'h3'}],
-      ]),
-    );
-    expect(counts.out.get('h1')).toBe(2);
-    expect(counts.in.get('h2')).toBe(1);
-    expect(counts.in.get('h1')).toBeUndefined();
   });
 });

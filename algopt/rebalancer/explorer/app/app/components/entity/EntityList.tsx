@@ -22,6 +22,7 @@ import EntityFilter from '@/app/components/EntityFilter';
 import TablePaginationActions from '@/app/components/TablePaginationActions';
 import {ELLIPSIS_SX, TABLE_SX} from '@/app/components/table/tableSx';
 import FilterChips, {type ExtraChip} from '@/app/components/ui/FilterChips';
+import {BaselineCurrentBars, OutInBar} from '@/app/components/ui/Bars';
 import Pill from '@/app/components/ui/Pill';
 import {EmptyState} from '@/app/components/ui/StateViews';
 import {TAG_CHIP_SX} from '@/app/components/ui/Tag';
@@ -57,6 +58,8 @@ import {
   TEXT,
   WEIGHT,
 } from '@/lib/ui-tokens';
+
+import type {ItemMoves} from '@/lib/run-changes';
 
 import type {ViewState} from './entity-view-state';
 
@@ -221,7 +224,8 @@ function ChangeCell({
         sx={{...ELLIPSIS_SX, ...MONO_TEXT, color: COLOR.textSecondary}}>
         {top.field.label}
       </Box>
-      <Box sx={{display: 'flex', alignItems: 'baseline', gap: 1}}>
+      <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+        <BaselineCurrentBars a={top.a} b={top.b} width={48} />
         <Box component="span" sx={{whiteSpace: 'nowrap'}}>
           <Box component="span" sx={{color: COLOR.textTertiary}}>
             <NumberText value={top.a} />
@@ -241,7 +245,8 @@ function ChangeCell({
   );
 }
 
-function MovesCell({out, into}: {out: number; into: number}) {
+/** Moves out and in as words, over a bar on the page's scale. */
+function MovesCell({out, into, max}: {out: number; into: number; max: number}) {
   if (out === 0 && into === 0) {
     return (
       <Box component="span" sx={{color: COLOR.textDecorative}}>
@@ -250,10 +255,19 @@ function MovesCell({out, into}: {out: number; into: number}) {
     );
   }
   return (
-    <Box component="span" sx={{...TABULAR, whiteSpace: 'nowrap'}}>
-      {out > 0 && `${formatCount(out)} out`}
-      {out > 0 && into > 0 && ' · '}
-      {into > 0 && `${formatCount(into)} in`}
+    <Box
+      sx={{
+        display: 'inline-flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        gap: 0.5,
+      }}>
+      <Box component="span" sx={{...TABULAR, whiteSpace: 'nowrap'}}>
+        {out > 0 && `${formatCount(out)} out`}
+        {out > 0 && into > 0 && ' · '}
+        {into > 0 && `${formatCount(into)} in`}
+      </Box>
+      <OutInBar out={out} into={into} max={max} />
     </Box>
   );
 }
@@ -319,6 +333,7 @@ export default function EntityList({
   linkEntities,
   objectStatus,
   moves,
+  movesOrdered,
   showChange,
   columnDescriptions,
   columnTypeaheadEntities,
@@ -344,7 +359,9 @@ export default function EntityList({
   // Backend column → the entity its values name.
   linkEntities: Readonly<Record<string, string>>;
   objectStatus: ObjectStatus | null;
-  moves: {out: Map<string, number>; in: Map<string, number>} | null;
+  moves: ReadonlyMap<string, ItemMoves> | null;
+  // The rows come busiest first: the Moves header shows the order.
+  movesOrdered: boolean;
   showChange: boolean;
   columnDescriptions: ColumnDescription[];
   columnTypeaheadEntities: Record<string, string> | undefined;
@@ -356,6 +373,11 @@ export default function EntityList({
   const [sameOpen, setSameOpen] = useState(false);
   const rows = result.rows;
   const total = result.totalCount;
+  // One scale for every page: the busiest item's moves.
+  let maxMoves = 0;
+  for (const m of moves?.values() ?? []) {
+    maxMoves = Math.max(maxMoves, m.out, m.in);
+  }
   const grouped = viewState.groupByColumns.length > 0;
   const page = Math.floor(viewState.offset / viewState.limit);
   const first = total === 0 ? 0 : viewState.offset + 1;
@@ -723,8 +745,22 @@ export default function EntityList({
                   </Box>
                 ))}
                 {moves != null && (
-                  <th className="num" title="Moved objects, Initial → Final">
-                    Moves
+                  <th
+                    className="num"
+                    title="Moved objects out and in, Initial → Final"
+                    aria-sort={movesOrdered ? 'descending' : undefined}>
+                    <Box
+                      component="span"
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                      }}>
+                      Moves
+                      {movesOrdered && (
+                        <SortArrow dir={OrderDirection.DESCENDING} />
+                      )}
+                    </Box>
                   </th>
                 )}
                 {showChange && (
@@ -794,8 +830,9 @@ export default function EntityList({
                     {moves != null && (
                       <td className="num">
                         <MovesCell
-                          out={moves.out.get(id) ?? 0}
-                          into={moves.in.get(id) ?? 0}
+                          out={moves.get(id)?.out ?? 0}
+                          into={moves.get(id)?.in ?? 0}
+                          max={maxMoves}
                         />
                       </td>
                     )}

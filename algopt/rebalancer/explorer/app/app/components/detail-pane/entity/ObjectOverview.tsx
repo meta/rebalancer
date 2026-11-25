@@ -235,6 +235,7 @@ function Groups({
           metadata.objectName,
         )}?${stringifyQs({
           filters: [{rules: [{stringAny: {column: key, values: [group]}}]}],
+          show: 'all',
         })}`;
         return (
           <Box

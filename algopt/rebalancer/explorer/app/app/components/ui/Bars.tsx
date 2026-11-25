@@ -2,6 +2,7 @@
 
 import {Box} from '@mui/material';
 
+import {formatCompact, formatCount} from '@/lib/format';
 import {COLOR, radius} from '@/lib/ui-tokens';
 
 /**
@@ -87,6 +88,116 @@ export function ChangeBar({
           borderRadius: radius('full'),
           bgcolor: good ? COLOR.positive : COLOR.negative,
           ...(good ? {right: half} : {left: half}),
+        }}
+      />
+    </Box>
+  );
+}
+
+/**
+ * Baseline / current bars: Initial (grey) over Final (blue) on one scale,
+ * the larger of the two. Signs are shown as magnitudes; the text beside the
+ * bars carries the values.
+ */
+export function BaselineCurrentBars({
+  a,
+  b,
+  width = 96,
+}: {
+  a: number;
+  b: number;
+  width?: number | string;
+}) {
+  const max = Math.max(Math.abs(a), Math.abs(b));
+  const pct = (v: number) =>
+    max === 0
+      ? '0%'
+      : `${Math.max(Math.abs(v) > 0 ? 2 : 0, (100 * Math.abs(v)) / max)}%`;
+  const bar = (v: number, color: string) => (
+    <Box
+      sx={{
+        height: 5,
+        borderRadius: radius('full'),
+        bgcolor: COLOR.bgSubtle,
+        overflow: 'hidden',
+      }}>
+      <Box
+        sx={{
+          width: pct(v),
+          height: '100%',
+          borderRadius: radius('full'),
+          bgcolor: color,
+        }}
+      />
+    </Box>
+  );
+  return (
+    <Box
+      role="img"
+      aria-label={`Initial ${formatCompact(a)}, final ${formatCompact(b)}`}
+      sx={{
+        width,
+        flexShrink: 0,
+        display: 'grid',
+        gap: '2px',
+      }}>
+      {bar(a, COLOR.baseline)}
+      {bar(b, COLOR.current)}
+    </Box>
+  );
+}
+
+/**
+ * Moves out and in on one scale: out grows left from the center in the
+ * baseline grey (what the item had), in grows right in the current blue
+ * (what it gained). Callers write the counts as well.
+ */
+export function OutInBar({
+  out,
+  into,
+  max,
+  width = 64,
+}: {
+  out: number;
+  into: number;
+  max: number;
+  width?: number;
+}) {
+  const half = width / 2;
+  const w = (n: number) =>
+    n === 0 || max === 0 ? 0 : Math.max(2, (n / max) * half);
+  return (
+    <Box
+      role="img"
+      aria-label={`${formatCount(out)} out, ${formatCount(into)} in`}
+      sx={{
+        position: 'relative',
+        width,
+        height: 6,
+        flexShrink: 0,
+        borderRadius: radius('full'),
+        bgcolor: COLOR.bgSubtle,
+      }}>
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          right: half,
+          width: w(out),
+          borderRadius: radius('full'),
+          bgcolor: COLOR.baseline,
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: half,
+          width: w(into),
+          borderRadius: radius('full'),
+          bgcolor: COLOR.current,
         }}
       />
     </Box>

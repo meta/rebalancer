@@ -7,6 +7,7 @@ import {useSearchParams} from 'next/navigation';
 
 import EntityFacets from '@/app/components/entity/EntityFacets';
 import EntityList from '@/app/components/entity/EntityList';
+import FlowsCard from '@/app/components/entity/FlowsCard';
 import {
   searchParamsFromViewState,
   viewStateFromSearchParams,
@@ -22,7 +23,6 @@ import {useProblemMetadata} from '@/lib/contexts/ProblemMetadataContext';
 import {useRebalancerHandle} from '@/lib/contexts/RebalancerHandleContext';
 import {
   buildFields,
-  containerMoves,
   fieldWidth,
   fitToWidth,
   inDisplayOrder,
@@ -42,6 +42,7 @@ import type {
   Result,
   RowData,
 } from '@/lib/rebalancer-explorer-types';
+import {flows, itemMoves, type Flow} from '@/lib/run-changes';
 import {useUrlStateSync} from '@/lib/url-state';
 
 import MetricDistributionSection from './MetricDistributionSection';
@@ -173,11 +174,36 @@ export default function EntityView({entityName}: {entityName: string}) {
   const {moves, loading: movesLoading} = useRunMoves(
     handle,
     metadata,
-    kind === 'object' || kind === 'container',
+    kind === 'object' || kind === 'container' || kind === 'scope',
+  );
+  // The scope (or the container) whose items the moves are counted on.
+  const moveKey =
+    kind === 'container'
+      ? (metadata?.containerName ?? null)
+      : kind === 'scope'
+        ? entityName
+        : null;
+  const itemMoveCounts = useMemo(
+    () =>
+      moves?.moved != null && moveKey != null
+        ? itemMoves(moves.moved, moveKey)
+        : null,
+    [moves, moveKey],
   );
 
-  // The rows "Moved" keeps: moved objects, or the containers they leave or
-  // enter.
+  // Flows between containers (objects and containers) or the scope's items.
+  const flowKey =
+    kind === 'object' ? (metadata?.containerName ?? null) : moveKey;
+  const flowList = useMemo(
+    () =>
+      moves?.moved != null && flowKey != null
+        ? flows(moves.moved, flowKey)
+        : [],
+    [moves, flowKey],
+  );
+
+  // The rows the changed view keeps: moved objects, or the items that moved
+  // objects left or entered.
   const movedNames = useMemo(() => {
     if (moves?.moved == null || moves.count === 0) {
       return null;
@@ -185,17 +211,35 @@ export default function EntityView({entityName}: {entityName: string}) {
     if (kind === 'object') {
       return Array.from(moves.moved.keys());
     }
-    const touched = new Set<string>();
-    for (const {src, dst} of moves.moved.values()) {
-      if (src !== '') {
-        touched.add(src);
-      }
-      touched.add(dst);
+    return itemMoveCounts != null && itemMoveCounts.size > 0
+      ? Array.from(itemMoveCounts.keys())
+      : null;
+  }, [moves, kind, itemMoveCounts]);
+  // On by default when the run has changed rows.
+  const movedOnly = (viewState.movedOnly ?? true) && movedNames != null;
+  const waitingForMoves = viewState.movedOnly !== false && movesLoading;
+
+  // A scope's item count, for "All N".
+  const [scopeTotal, setScopeTotal] = useState<{
+    entity: string;
+    n: number;
+  } | null>(null);
+  useEffect(() => {
+    if (handle == null || kind !== 'scope') {
+      return;
     }
-    return Array.from(touched);
-  }, [moves, kind]);
-  const movedOnly = viewState.movedOnly && movedNames != null;
-  const waitingForMoves = viewState.movedOnly && movesLoading;
+    let cancelled = false;
+    fetchEntityData(handle, {entity: entityName, page: {offset: 0, limit: 1}})
+      .then(({result}) => {
+        if (!cancelled) {
+          setScopeTotal({entity: entityName, n: result.totalCount});
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [handle, kind, entityName]);
 
   const pkColumn =
     columnDescriptions?.find(c => c.primaryKey)?.name ??
@@ -212,6 +256,37 @@ export default function EntityView({entityName}: {entityName: string}) {
     movedOnly,
   ]);
 
+  // The changed items, busiest first, when nothing else decides the order:
+  // the page's names are picked here and the server returns just those rows.
+  const byActivity = useMemo(() => {
+    if (
+      !movedOnly ||
+      itemMoveCounts == null ||
+      movedNames == null ||
+      viewState.orderColumn != null ||
+      viewState.filters.length > 0 ||
+      search !== '' ||
+      viewState.groupByColumns.length > 0
+    ) {
+      return null;
+    }
+    const activity = (n: string) => {
+      const m = itemMoveCounts.get(n);
+      return m == null ? 0 : m.out + m.in;
+    };
+    return [...movedNames].sort(
+      (a, b) => activity(b) - activity(a) || a.localeCompare(b),
+    );
+  }, [
+    movedOnly,
+    itemMoveCounts,
+    movedNames,
+    viewState.orderColumn,
+    viewState.filters,
+    search,
+    viewState.groupByColumns,
+  ]);
+
   const seqRef = useRef(0);
   const fetchData = useCallback(async () => {
     if (handle == null || waitingForMoves) {
@@ -224,7 +299,12 @@ export default function EntityView({entityName}: {entityName: string}) {
     if (search !== '') {
       rules.push(searchRule(pkColumn, search));
     }
-    if (movedOnly && movedNames != null) {
+    const pageNames =
+      byActivity?.slice(viewState.offset, viewState.offset + viewState.limit) ??
+      null;
+    if (pageNames != null) {
+      rules.push({stringAny: {column: pkColumn, values: pageNames}});
+    } else if (movedOnly && movedNames != null) {
       rules.push({stringAny: {column: pkColumn, values: movedNames}});
     }
     try {
@@ -242,7 +322,10 @@ export default function EntityView({entityName}: {entityName: string}) {
                 ],
               }
             : undefined,
-        page: {offset: viewState.offset, limit: viewState.limit},
+        page:
+          pageNames != null
+            ? {offset: 0, limit: viewState.limit}
+            : {offset: viewState.offset, limit: viewState.limit},
         group:
           viewState.groupByColumns.length > 0
             ? {columns: viewState.groupByColumns}
@@ -251,7 +334,18 @@ export default function EntityView({entityName}: {entityName: string}) {
       if (seq !== seqRef.current) {
         return;
       }
-      const result = response.result;
+      let result = response.result;
+      if (pageNames != null && byActivity != null) {
+        const pk = result.columns.findIndex(c => c.primaryKey);
+        const rank = new Map(pageNames.map((n, i) => [n, i]));
+        const at = (r: RowData) =>
+          rank.get(r.cells[pk]?.stringValue ?? '') ?? pageNames.length;
+        result = {
+          ...result,
+          rows: [...result.rows].sort((x, y) => at(x) - at(y)),
+          totalCount: byActivity.length,
+        };
+      }
       setData({result, key: queryKey});
       if (viewState.groupByColumns.length === 0) {
         setColumnDescriptions(prev =>
@@ -286,6 +380,7 @@ export default function EntityView({entityName}: {entityName: string}) {
   }, [
     handle,
     waitingForMoves,
+    byActivity,
     viewState,
     search,
     pkColumn,
@@ -414,13 +509,7 @@ export default function EntityView({entityName}: {entityName: string}) {
   );
   const auto = explicit.length === 0;
 
-  const moveCounts = useMemo(
-    () =>
-      kind === 'container' && !grouped && moves?.moved != null
-        ? containerMoves(moves.moved)
-        : null,
-    [kind, grouped, moves],
-  );
+  const moveCounts = !grouped ? itemMoveCounts : null;
   const showChange =
     (kind === 'container' || kind === 'scope') &&
     fields.some(f => f.kind === 'utilization' && f.a != null);
@@ -481,6 +570,25 @@ export default function EntityView({entityName}: {entityName: string}) {
     }
   };
 
+  // A flow narrows the list: objects by their two containers, items by name.
+  // Picking the flow shown clears it.
+  const flowRules = (f: Flow): FilterRule[] =>
+    kind === 'object'
+      ? [
+          {stringAny: {column: `src.${flowKey}`, values: [f.src]}},
+          {stringAny: {column: `dst.${flowKey}`, values: [f.dst]}},
+        ]
+      : [{stringAny: {column: pkColumn, values: [f.src, f.dst]}}];
+  const isPicked = (f: Flow) =>
+    viewState.filters.length === 1 &&
+    JSON.stringify(viewState.filters[0].rules) === JSON.stringify(flowRules(f));
+  const pickFlow = (f: Flow) =>
+    setViewState(prev => ({
+      ...prev,
+      filters: isPicked(f) ? [] : [{rules: flowRules(f)}],
+      offset: 0,
+    }));
+
   const clearAll = () =>
     setViewState(prev => ({
       ...prev,
@@ -504,7 +612,7 @@ export default function EntityView({entityName}: {entityName: string}) {
       ? [
           {
             key: 'moved',
-            label: kind === 'container' ? 'Touched by moves' : 'Moved',
+            label: kind === 'object' ? 'Moved' : 'Touched by moves',
             onRemove: () =>
               setViewState(prev => ({...prev, movedOnly: false, offset: 0})),
           },
@@ -541,15 +649,23 @@ export default function EntityView({entityName}: {entityName: string}) {
       ? kind === 'object'
         ? {
             label: 'Moved',
-            help: `${metadata.objectName} rows whose ${metadata.containerName} differs between the Initial and the Final assignment.`,
+            help: `${metadata.objectName} rows whose ${metadata.containerName} differs between the Initial and the Final assignment. Shown by default; All lists every row.`,
             movedCount: moves.count,
             total: metadata.numObjects,
           }
         : {
             label: 'Touched',
-            help: `${metadata.containerName} rows that a move leaves or enters, Initial → Final.`,
+            help:
+              kind === 'container'
+                ? `${metadata.containerName} rows that a move leaves or enters, Initial → Final. Shown by default; All lists every row.`
+                : `${entityName} items that ${metadata.objectName} rows moved into or out of, Initial → Final; a move inside one item does not change it. Shown by default; All lists every item.`,
             movedCount: movedNames.length,
-            total: metadata.numContainers,
+            total:
+              kind === 'container'
+                ? metadata.numContainers
+                : scopeTotal?.entity === entityName
+                  ? scopeTotal.n
+                  : null,
           }
       : null;
 
@@ -601,10 +717,12 @@ export default function EntityView({entityName}: {entityName: string}) {
                 ? {
                     ...show,
                     moved: movedOnly,
+                    // The changed rows are the default, so choosing them
+                    // drops the parameter.
                     onChange: moved =>
                       setViewState(prev => ({
                         ...prev,
-                        movedOnly: moved,
+                        movedOnly: moved ? null : false,
                         offset: 0,
                       })),
                   }
@@ -624,6 +742,18 @@ export default function EntityView({entityName}: {entityName: string}) {
           ref={listRef}
           sx={{position: 'relative', minWidth: 0}}
           aria-busy={dataLoading}>
+          {movedOnly && !grouped && flowKey != null && metadata != null && (
+            <FlowsCard
+              flows={flowList}
+              itemEntity={flowKey}
+              itemsLabel={
+                kind === 'scope' ? `${flowKey} items` : `${flowKey} rows`
+              }
+              objectNoun={metadata.objectName}
+              onPick={pickFlow}
+              isPicked={isPicked}
+            />
+          )}
           {result == null ? (
             <Skeleton variant="rounded" height={480} />
           ) : (
@@ -651,6 +781,7 @@ export default function EntityView({entityName}: {entityName: string}) {
                     : null
                 }
                 moves={moveCounts}
+                movesOrdered={byActivity != null}
                 showChange={showChange}
                 columnDescriptions={columnDescriptions ?? []}
                 columnTypeaheadEntities={columnTypeaheadEntities}
