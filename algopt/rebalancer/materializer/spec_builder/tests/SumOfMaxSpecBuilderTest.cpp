@@ -88,4 +88,28 @@ TEST_F(SumOfMaxSpecBuilderTest, Constraint) {
       "SumOfMaxSpec not supported as a constraint");
 }
 
+class SumOfMaxSpecBuilderEmptyPartitionTest : public SpecBuilderTestBase<> {
+ protected:
+  void SetUp() override {
+    // The partition has no groups; task0 belongs to none.
+    setUpUniverse({{"host0", {}}, {"host1", {"task0"}}});
+    folly::coro::blockingWait(addPartition("msb", {}));
+    folly::coro::blockingWait(addObjectDimension(
+        "cpu", entities::Map<entities::ObjectId, double>{}, 10));
+  }
+};
+
+TEST_F(SumOfMaxSpecBuilderEmptyPartitionTest, PartitionWithoutGroups) {
+  auto spec = createSumOfMaxSpec();
+  spec.partitionName() = "msb";
+  spec.filter()->itemsWhitelist() = std::vector<std::string>{"host0", "host1"};
+  const SumOfMaxSpecBuilder specBuilder(buildUniverse(), spec);
+
+  // No group has any utilization, so every scope item contributes 0.
+  const auto goal =
+      folly::coro::blockingWait(specBuilder.goalCoro(expressionBuilder()));
+  EXPECT_EQ(0, evaluate(goal, deltaFromInitial({})));
+  EXPECT_EQ(0, evaluate(goal, deltaFromInitial({{"task0", "host0"}})));
+}
+
 } // namespace facebook::rebalancer::materializer::tests

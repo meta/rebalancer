@@ -88,3 +88,29 @@ TEST_P(SumOfMaxTest, BasicTest) {
   EXPECT_EQ(heavyTaskHost, assignment.at("task4"));
   EXPECT_EQ(heavyTaskHost, assignment.at("task5"));
 }
+
+TEST_P(SumOfMaxTest, PartitionWithoutGroups) {
+  // Like a RAS shard whose request has reservations but no servers: the
+  // partition built from the shard's servers has no groups.
+  auto solver =
+      initializeTestProblemSolver({.executorThreadCount = GetParam()});
+  solver->setObjectName("task");
+  solver->setContainerName("host");
+  solver->setAssignment(
+      std::unordered_map<std::string, std::vector<std::string>>{
+          {"host0", {}}, {"host1", {}}});
+  solver->addPartition(
+      "msb", std::unordered_map<std::string, std::vector<std::string>>{});
+
+  SumOfMaxSpec spec;
+  spec.name() = "test";
+  spec.dimension() = "task_count";
+  spec.partitionName() = "msb";
+  spec.scope() = "host";
+  spec.filter()->itemsWhitelist() = std::vector<std::string>{"host0"};
+  solver->addGoal(spec);
+  solver->addSolver(makeDefaultLocalSearchSolver());
+
+  auto solution = solver->solve();
+  EXPECT_EQ(0, *solution.finalObjective()->value());
+}
