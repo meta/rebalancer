@@ -322,4 +322,33 @@ TEST_F(
       "Custom stopping condition (maxFreeLimit/minUsedLimit) not supported in "
       "minimize containers goal in LEGACY formula but is supported in NEW formula");
 }
+
+CO_TEST_F(MinimizeContainersSpecBuilderTest, ContinuousFormulasWithZeroCost) {
+  // host9 starts empty
+  createScenario();
+  const auto universe = buildUniverse();
+
+  for (const auto formula :
+       {interface::MinimizeContainerSpecFormula::NEW,
+        interface::MinimizeContainerSpecFormula::LEGACY}) {
+    interface::MinimizeContainersSpec spec;
+    spec.scope() = "host";
+    spec.dimension() = "task_count";
+    spec.formula() = formula;
+    spec.containerCosts() = {{"host9", 0.0}};
+
+    const MinimizeContainersSpecBuilder specBuilder(
+        universe, spec, /*continuousExpressions=*/true);
+    REBALANCER_EXPECT_RUNTIME_ERROR(
+        folly::coro::blockingWait(specBuilder.goalCoro(expressionBuilder())),
+        "Non-positive containerCosts are not supported when using MinimizeContainerSpec with a continuous formula; 'host9' has cost 0");
+
+    // the discrete (optimal solver) formula supports it: host9 does not count
+    const MinimizeContainersSpecBuilder discreteBuilder(
+        universe, spec, /*continuousExpressions=*/false);
+    const auto discreteGoal =
+        co_await discreteBuilder.goalCoro(expressionBuilder());
+    EXPECT_NEAR(8, evaluate(discreteGoal, deltaFromInitial({})), 1e-8);
+  }
+}
 } // namespace facebook::rebalancer::materializer::tests

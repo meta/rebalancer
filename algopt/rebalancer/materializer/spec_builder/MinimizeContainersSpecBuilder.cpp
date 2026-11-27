@@ -47,6 +47,22 @@ DimensionValues getObjectDimensionSumAndMinPositiveValue(
       .minPositive = objectScalarDimension.getMinimumPositiveValue()};
 }
 
+// The continuous formulas weight each scope item by 1 / cost, which has no
+// finite value for a cost of 0 (and inverts the incentive for a negative one).
+double getContinuousFormulaCost(
+    const std::map<std::string, double>& containerCosts,
+    const std::string& scopeItemName) {
+  const double cost = folly::get_default(containerCosts, scopeItemName, 1.0);
+  if (!(cost > 0)) {
+    throw std::runtime_error(
+        fmt::format(
+            "Non-positive containerCosts are not supported when using MinimizeContainerSpec with a continuous formula; '{}' has cost {}",
+            scopeItemName,
+            cost));
+  }
+  return cost;
+}
+
 } // namespace
 
 namespace facebook::rebalancer::materializer {
@@ -157,8 +173,8 @@ MinimizeContainersSpecBuilder::getMinimizeContainersContinuousFormulaExpr(
   ExprPtr occupiedScopeItemsCount = const_expr(0, *universe_);
   ExprPtr sumOverUtilSquared = const_expr(0, *universe_);
   for (auto& scopeItemId : filteredScopeItemIds) {
-    const double cost = folly::get_default(
-        containerCosts_, universe_->getEntityName(scopeItemId), 1.0);
+    const double cost = getContinuousFormulaCost(
+        containerCosts_, universe_->getEntityName(scopeItemId));
     auto absoluteUtil = co_await expressionBuilder.getAbsoluteUtil(
         UtilMetric::AFTER, dimensionId_, scopeId_, scopeItemId);
 
@@ -249,8 +265,8 @@ MinimizeContainersSpecBuilder::getMinimizeContainerLegacyFormulaExpr(
     // Each container may have some cost depending on usecase
     // and we minimize total sum of the cost of containers being used
 
-    const double containerCost = folly::get_default(
-        containerCosts_, universe_->getEntityName(scopeItemId), 1.0);
+    const double containerCost = getContinuousFormulaCost(
+        containerCosts_, universe_->getEntityName(scopeItemId));
     const double coeff = 1.0 / containerCost;
     auto expr = coeff *
         power(co_await expressionBuilder.getRelativeUtil(

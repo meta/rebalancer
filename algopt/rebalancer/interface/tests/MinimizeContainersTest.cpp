@@ -881,3 +881,18 @@ TEST_P(MinimizeContainersTest, MaxFreeLimitWhenAllDimensionsNegative) {
       solver->solve(),
       "Negative dimension values are not supported when using MinimizeContainerSpec with NEW formula");
 }
+
+TEST_P(MinimizeContainersTest, ZeroContainerCostWithLocalSearch) {
+  auto solver = createScenario(GetParam());
+  MinimizeContainersSpec spec;
+  spec.scope() = "host";
+  spec.dimension() = "task_count";
+  spec.formula() = MinimizeContainerSpecFormula::NEW;
+  // host9 starts empty
+  spec.containerCosts() = {{"host9", 0.0}};
+  solver->addGoal(spec);
+
+  REBALANCER_EXPECT_RUNTIME_ERROR(
+      solver->solve(),
+      "Non-positive containerCosts are not supported when using MinimizeContainerSpec with a continuous formula; 'host9' has cost 0");
+}
