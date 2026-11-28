@@ -180,4 +180,29 @@ CO_TEST_F(AggregatedGroupSpecBuilderTest, DynamicDimensionGoal) {
   const auto goal = co_await specBuilder.goalCoro(expressionBuilder());
   EXPECT_EQ(0, evaluate(goal, deltaFromInitial({})));
 }
+
+// No object of the partition has a non-zero weight in the scope item, so the
+// scope item's aggregated value is 0 and the constraint value is 0 - 10.
+CO_TEST_F(AggregatedGroupSpecBuilderTest, ConstraintWithAllZeroWeights) {
+  co_await addObjectDimension(
+      "zeroSize",
+      {{objectId("obj1"), 0},
+       {objectId("obj2"), 0},
+       {objectId("obj3"), 0},
+       {objectId("obj4"), 0}},
+      0);
+  interface::AggregatedGroupSpec spec;
+  spec.scope() = "scope";
+  spec.partitionName() = "partition";
+  spec.dimension() = "zeroSize";
+  spec.limit()->globalLimit() = 10;
+
+  const AggregatedGroupSpecBuilder specBuilder(buildUniverse(), spec);
+
+  const auto conts = co_await specBuilder.constraints(expressionBuilder());
+  CO_ASSERT_EQ(1, conts.size());
+  EXPECT_EQ(-10, evaluate(conts[0], deltaFromInitial({})));
+  const auto goal = co_await specBuilder.goalCoro(expressionBuilder());
+  EXPECT_EQ(0, evaluate(goal, deltaFromInitial({})));
+}
 } // namespace facebook::rebalancer::materializer::tests

@@ -138,6 +138,10 @@ AggregatedGroupSpecBuilder::constraints(
                 fmt::underlying(containerAggregationType)));
       }
     }
+    if (!scopeItemValue) {
+      // no object has a non-zero weight in this scope item
+      scopeItemValue = const_expr(0, *universe_);
+    }
     results.emplace_back(scopeItemValue - scopeItemLimit);
   }
   co_return results;
